@@ -16,9 +16,13 @@ option(TIMESTRAL_GGML_CUDA    "Forward GGML_CUDA" OFF)
 option(TIMESTRAL_GGML_METAL   "Forward GGML_METAL" OFF)
 option(TIMESTRAL_GGML_VULKAN  "Forward GGML_VULKAN" OFF)
 
-set(GGML_CUDA   ${TIMESTRAL_GGML_CUDA}   CACHE BOOL "" FORCE)
-set(GGML_METAL  ${TIMESTRAL_GGML_METAL}  CACHE BOOL "" FORCE)
-set(GGML_VULKAN ${TIMESTRAL_GGML_VULKAN} CACHE BOOL "" FORCE)
+# TIMESTRAL_GGML_<X>=ON turns the ggml backend on. When it is OFF, a direct
+# -DGGML_<X>=ON from the caller is kept; ggml's own default applies otherwise.
+foreach(_be CUDA METAL VULKAN)
+  if(TIMESTRAL_GGML_${_be})
+    set(GGML_${_be} ON CACHE BOOL "" FORCE)
+  endif()
+endforeach()
 
 # Native code generation and tinyBLAS SGEMM on by default; a caller can override.
 if(NOT DEFINED GGML_NATIVE)

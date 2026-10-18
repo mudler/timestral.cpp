@@ -29,7 +29,8 @@ static float next_down(float f, int n = 1) {
 
 static void test_exact() {
     PASS(compare_exact_i32({1, 2, 3}, {1, 2, 3}, "i32 equal"), "i32 equal passes");
-    PASS(compare_exact_i32({}, {}, "i32 empty"), "i32 empty equal passes");
+    REJECT(compare_exact_i32({}, {}, "i32 empty"), "i32 empty comparison fails");
+    REJECT(compare_exact_i8({}, {}, "i8 empty"), "i8 empty comparison fails");
     REJECT(compare_exact_i32({1, 2, 3}, {1, 2, 4}, "i32 one off"), "i32 one differs fails");
     REJECT(compare_exact_i32({1, 2, 3}, {1, 2}, "i32 size"), "i32 size mismatch fails");
     REJECT(compare_exact_i32({0}, {-1}, "i32 sign"), "i32 sign differs fails");
@@ -159,6 +160,8 @@ static void test_norm() {
     REJECT(compare_norm({INFF, 2.f, 2.f, 2.f}, ref, 1.0, nan_cap, "norm inf"), "inf vs finite fails");
     REJECT(compare_norm({1.f}, {1.f, 2.f}, 1.0, nan_cap, "norm size"), "size mismatch fails");
     REJECT(compare_norm({}, {}, 1.0, nan_cap, "norm empty"), "empty comparison fails");
+    REJECT(compare_norm({NANF, NANF}, {NANF, NANF}, 1.0, nan_cap, "norm all nan"), "all-NaN inputs fail (no finite element)");
+    REJECT(compare_norm({INFF, -INFF}, {INFF, -INFF}, 1.0, nan_cap, "norm all inf"), "all-inf inputs fail (no finite element)");
     REJECT(compare_norm(ref, ref, -1.0, nan_cap, "norm neg floor"), "negative floor fails");
     REJECT(compare_norm(ref, ref, (double)NANF, nan_cap, "norm nan floor"), "NaN floor fails");
     // all-zero reference: rms is 0, so a difference must fail and equality must pass
@@ -194,6 +197,9 @@ static void test_baseline_io_and_floors() {
     ggml_tensor* tf = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, 3, 2);   // torch shape (2, 3)
     ggml_set_name(tf, "t.f32");
     for (int i = 0; i < 6; ++i) ((float*)tf->data)[i] = 0.5f * (float)i;
+    ggml_tensor* t3 = ggml_new_tensor_3d(ctx, GGML_TYPE_F32, 3, 1, 1);  // torch shape (1, 1, 3)
+    ggml_set_name(t3, "t.lead1");
+    for (int i = 0; i < 3; ++i) ((float*)t3->data)[i] = (float)i;
     ggml_tensor* td = ggml_new_tensor_1d(ctx, GGML_TYPE_F64, 2);
     ggml_set_name(td, "t.f64");
     ((double*)td->data)[0] = 1.25; ((double*)td->data)[1] = -2.5;
@@ -203,7 +209,7 @@ static void test_baseline_io_and_floors() {
     ggml_tensor* tb = ggml_new_tensor_1d(ctx, GGML_TYPE_I8, 4);
     ggml_set_name(tb, "t.i8");
     for (int i = 0; i < 4; ++i) ((int8_t*)tb->data)[i] = (int8_t)(i & 1);
-    for (ggml_tensor* t : {tf, td, ti, tb}) gguf_add_tensor(g, t);
+    for (ggml_tensor* t : {tf, t3, td, ti, tb}) gguf_add_tensor(g, t);
     bool wrote = gguf_write_to_file(g, path.c_str(), false);
     gguf_free(g);
     ggml_free(ctx);
@@ -212,7 +218,9 @@ static void test_baseline_io_and_floors() {
 
     std::vector<float> f; std::vector<int64_t> shape;
     EXPECT(load_baseline(path, "t.f32", f, shape) && f.size() == 6 && f[5] == 2.5f &&
-           shape.size() == 2 && shape[0] == 2 && shape[1] == 3, "f32 tensor loads with shape (2, 3)");
+           shape == std::vector<int64_t>({1, 1, 2, 3}), "f32 tensor loads with shape (2, 3), padded to 4 dims");
+    EXPECT(load_baseline(path, "t.lead1", f, shape) && f.size() == 3 &&
+           shape == std::vector<int64_t>({1, 1, 1, 3}), "torch shape (1, 1, 3) keeps its leading 1s (padded form)");
     std::vector<double> d;
     EXPECT(load_baseline_f64(path, "t.f64", d, shape) && d.size() == 2 && d[1] == -2.5, "f64 tensor loads");
     std::vector<int32_t> i32;

@@ -35,6 +35,12 @@ cmake --build build -j
 ctest --test-dir build --output-on-failure
 ```
 
+## GPU backends
+
+Use `-DTIMESTRAL_GGML_CUDA=ON`, `-DTIMESTRAL_GGML_METAL=ON` or
+`-DTIMESTRAL_GGML_VULKAN=ON`. A direct `-DGGML_CUDA=ON` also works: the project does
+not override a ggml option that the caller set.
+
 ## Layout
 
 See the repository layout in `docs/PLAN.md`, section E.

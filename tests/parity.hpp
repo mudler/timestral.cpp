@@ -9,7 +9,9 @@
 //
 // Rules that apply to every helper:
 //   - sizes must be equal; a size mismatch fails.
-//   - a float comparison of zero elements fails (nothing was compared).
+//   - a comparison of zero elements fails, for every kind (nothing was compared).
+//   - NORM also fails when no finite element was compared (all NaN or inf): the
+//     error is not defined then.
 //   - NaN equals NaN only at the same position; +inf and -inf equal only themselves.
 //     A NaN or inf that the reference does not have in the same place always fails.
 //   - NaN in any tolerance (floor, k, M) fails; a comparison never passes by accident
@@ -95,7 +97,9 @@ struct Baseline {
 };
 
 // Copy a tensor of exactly type `want` into `out` (flattened, row-major as written by torch;
-// GGUF stores the shape reversed). `shape` is reported slowest to fastest. Fails when the
+// GGUF stores the shape reversed). `shape` is always 4 entries, slowest to fastest, with
+// the torch shape padded by leading 1s: ggml cannot tell (1,1,3) from (3), so the rank is
+// not recoverable and callers compare the padded shape. Fails when the
 // tensor is missing or has another type: a silent reinterpretation would hide a bad dump.
 template <typename T>
 inline bool load_typed(const std::string& path, const std::string& name, ggml_type want,
@@ -114,7 +118,7 @@ inline bool load_typed(const std::string& path, const std::string& name, ggml_ty
     }
     if (shape) {
         shape->clear();
-        for (int i = ggml_n_dims(t) - 1; i >= 0; --i) shape->push_back(t->ne[i]);
+        for (int i = GGML_MAX_DIMS - 1; i >= 0; --i) shape->push_back(t->ne[i]);
     }
     size_t n = (size_t)ggml_nelements(t);
     out.resize(n);
@@ -202,6 +206,7 @@ inline Result compare_exact_int(const std::vector<T>& got, const std::vector<T>&
         std::fprintf(stderr, "[%s] size mismatch got=%zu ref=%zu -> FAIL\n", label, got.size(), ref.size());
         return r;
     }
+    if (got.empty()) return detail::fail_msg(label, "no elements");
     bool first = true;
     for (size_t i = 0; i < got.size(); ++i) {
         if (got[i] != ref[i]) {
@@ -351,7 +356,8 @@ inline Result compare_norm(const std::vector<float>& got, const std::vector<floa
         if (d > maxd) { maxd = d; worst = i; }
     }
     r.worst = worst;
-    double rms = nfin ? std::sqrt(sumsq / (double)nfin) : 0.0;
+    if (nfin == 0) return detail::fail_msg(label, "no finite element was compared");
+    double rms = std::sqrt(sumsq / (double)nfin);
     if (nonfinite_bad) r.err = INFINITY;
     else if (rms > 0.0) r.err = maxd / rms;
     else r.err = (maxd == 0.0) ? 0.0 : INFINITY;   // an all-zero reference tolerates no difference
