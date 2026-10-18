@@ -46,6 +46,9 @@ public:
     ggml_tensor* tensor(const std::string& name) const;   // throws ts::Error when absent
     const std::vector<std::string>& tensor_names() const { return names_; }   // file order
     size_t mapped_bytes() const { return file_.size(); }
+    // Row of rope.cos / rope.sin for a position. Checked against the table's own length
+    // (ne[1] of rope.cos), not only against the config. Throws ts::Error when out of range.
+    int64_t rope_index(int64_t position) const;
     // True if the tensor data points into the file mapping (zero copy).
     bool in_mapping(const ggml_tensor* t) const;
 

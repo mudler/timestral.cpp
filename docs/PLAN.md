@@ -733,7 +733,8 @@ valid for the strict host gates everywhere; see D.4.
 ### D.1 Comparison kinds
 
 - **EXACT**: integer and boolean tensors, shapes, block counts, token counts, and float
-  tensors produced only by copies and selects. Every element equal.
+  tensors produced only by copies and selects. Every element equal. EXACT on floats is
+  IEEE value equality (+0 == -0); signed-zero differences are counted and reported.
 - **ULP(k)**: float32, every element within `k` units in the last place of the reference
   value (the distance between bit patterns, with `+0 == -0`, NaN equal to NaN at the same
   positions). Used only where no cancellation can happen.
@@ -788,13 +789,13 @@ the dump. "Free-running" means it gets the output of the C++ component before it
 |---|---|---|---|---|
 | G0.1 | M0b | every GGUF tensor vs safetensors (after undoing B.3) | bytes equal | the converter must not change a value |
 | G0.2 | M0b | config read by the loader vs `config.json` | EXACT | |
-| G0.3 | M0d | `rope.cos`/`rope.sin` vs every runtime table in the dumps | EXACT | P10 caveat; a mismatch is recorded with its positions and decides G2.2 |
+| G0.3 | M0d | `rope.cos`/`rope.sin` vs every runtime table in the dumps | EXACT | P10 caveat; a mismatch is recorded with its positions and decides G2.2; the output also records the count of signed-zero differences, apart from the value differences |
 | G1.1 | M1 | causal `loc`, `scale` | ULP(0) | float64 sequential prefix sums cast to float32 (P1, P2). If it fails with 1-ulp differences only, P1 is false: record it in `docs/parity.md` and use ULP(1) |
 | G1.2 | M1 | `scaled` (asinh) on causal rows; known rows: `MAG(4, max \|x\| / scale + 1)` | ULP(2) | the subtraction and the division have bit-equal inputs (G1.1) and are correctly rounded; `asinhf` vs torch's `asinh` are each <= 1 ulp from the true value. The M0d probe gives the measured distance |
 | G1.3 | M1 | known rows `loc`, `scale`, `is_binary` | `loc`: MAG(32, `max_t \|x_t\|` over observed steps of the row); `scale`: MAG(32, `max_t (x_t - loc)^2 / scale`); `is_binary`: EXACT | torch sums float32 in a cascade order that the port does not copy (P5). Each order has error <= `(log2 n + 1) * u * sum \|x\|` and `sum \|x\| / n <= max \|x\|`, so two orders differ by <= `2 * 16 * u * max \|x\|` for `n <= 33,792`. For the scale, the variance error is bounded the same way by `max (x - loc)^2`, and `d sqrt(v) = dv / (2 sqrt(v))`. A mean near 0 gives no unbounded ulp error with this measure |
 | G1.4 | M1 | `denormalize_quantiles`, `clamp_nonfinite` on dumped inputs | MAG(6, `\|sinh(x) * scale\| + \|loc\|`) | `sinhf` (<= 1 ulp each side, so 2), one multiply, one add; the add can cancel when `loc` and `sinh(x)*scale` have opposite signs, so the bound uses the magnitudes of the terms |
 | G2.1 | M2a | `rope.inv_freq` | EXACT | stored by the converter (P9) |
-| G2.2 | M2a | `cos`, `sin` rows gathered for the dumped positions | EXACT | stored tables (P10), if G0.3 passed; else ULP(1) at the positions G0.3 listed, with the reason in `docs/parity.md` |
+| G2.2 | M2a | `cos`, `sin` rows gathered for the dumped positions | EXACT | stored tables (P10), if G0.3 passed; else ULP(1) at the positions G0.3 listed, with the reason in `docs/parity.md`. The output records the count of signed-zero differences |
 | G2.3 | M2a | post-RoPE q, k (given dumped q, k, cos, sin) | ULP(0) | the same IEEE operations (P8) |
 | G2.4 | M2a | patch embedding, teacher-forced | NORM with `floor_tf` | |
 | G2.5 | M2b, M2c | one layer of each kind, teacher-forced, residual stream out; also each sublayer (q, k, v, pre-gate attention, gate, attention out, MLP out), each teacher-forced on its own dumped input | NORM with `floor_tf` | |

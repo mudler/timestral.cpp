@@ -8,6 +8,8 @@ namespace ts {
 
 namespace {
 
+constexpr int64_t kMaxRopePatches = int64_t(1) << 20;
+
 [[noreturn]] void fail(const std::string& m) { throw Error(m); }
 
 struct KV {
@@ -139,8 +141,15 @@ Config read_config(const gguf_context* g) {
     for (size_t i = 1; i < c.quantile_knots.size(); ++i)
         if (!(c.quantile_knots[i - 1] < c.quantile_knots[i])) fail("quantile_knots must be increasing");
     if (c.context_length % c.patch_size) fail("context_length is not a multiple of patch_size");
-    int64_t want_min = -(int64_t)(c.context_length / c.patch_size + c.block_size);
-    if (c.rope_table_pos_min != want_min)
+    // Arithmetic in int64. The table holds 2 * patches + 1 positions, so bound the patch count:
+    // 2^20 patches (about 33.5 million steps at patch_size 32) is far above the released models
+    // (1056) and keeps the table length and its byte size far from any overflow.
+    const int64_t patches = (int64_t)(c.context_length / c.patch_size) + (int64_t)c.block_size;
+    if (patches > kMaxRopePatches)
+        fail("context_length / patch_size + block_size = " + std::to_string(patches) +
+             " exceeds the supported maximum of " + std::to_string(kMaxRopePatches) + " rope table positions per side");
+    const int64_t want_min = -patches;
+    if ((int64_t)c.rope_table_pos_min != want_min)
         fail("rope.table_pos_min " + std::to_string(c.rope_table_pos_min) + " does not equal " + std::to_string(want_min));
     if (!(c.norm_eps > 0.f)) fail("norm eps must be positive");
     return c;
@@ -223,6 +232,15 @@ ggml_tensor* Model::tensor(const std::string& name) const {
     auto it = tensors_.find(name);
     if (it == tensors_.end()) fail("tensor not found: " + name);
     return it->second;
+}
+
+int64_t Model::rope_index(int64_t position) const {
+    const int64_t len = tensor("rope.cos")->ne[1];
+    const int64_t idx = position - (int64_t)cfg_.rope_table_pos_min;
+    if (idx < 0 || idx >= len)
+        fail("position " + std::to_string(position) + " is outside the rope table [" +
+             std::to_string(cfg_.rope_table_pos_min) + ", " + std::to_string(cfg_.rope_table_pos_min + len - 1) + "]");
+    return idx;
 }
 
 bool Model::in_mapping(const ggml_tensor* t) const {

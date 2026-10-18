@@ -183,11 +183,13 @@ def main() -> int:
     F64 = lambda k, v: w.add_key_value(k, float(v), VT.FLOAT64)
     B = lambda k, v: w.add_key_value(k, bool(v), VT.BOOL)
 
-    name = args.name or (hub_id.split("/")[-1] if hub_id else d.name)
+    # A fixed name for a local directory, so the output does not depend on the directory name.
+    name = args.name or (hub_id.split("/")[-1] if hub_id else "Timestral")
     S("general.name", name)
     S("general.license", license_text)
     S("general.license.name", "Modified MIT")
-    S("general.license.link", f"{HF_REPO_PREFIX}{hub_id}/blob/main/LICENSE" if hub_id else "")
+    lic_rev = args.revision or snap
+    S("general.license.link", f"{HF_REPO_PREFIX}{hub_id}/blob/{lic_rev}/LICENSE" if hub_id else "")
     S("general.source.url", f"{HF_REPO_PREFIX}{hub_id}" if hub_id else "")
     S("timestral.source.hf_revision", args.revision or snap or "")
     S("timestral.source.code_sha", CODE_SHA)

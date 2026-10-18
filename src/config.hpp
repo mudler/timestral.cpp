@@ -64,8 +64,9 @@ struct Config {
         for (size_t i = 0; i < quantile_knots.size(); ++i) if (quantile_knots[i] == 0.5) return (uint32_t)i;
         return 0;
     }
-    // Positions stored in rope.cos / rope.sin: table_pos_min .. -table_pos_min.
-    uint32_t rope_table_len() const { return (uint32_t)(-2 * (int64_t)rope_table_pos_min + 1); }
+    // Positions stored in rope.cos / rope.sin: table_pos_min .. -table_pos_min. All in int64:
+    // the loader bounds table_pos_min, so this cannot overflow for a config it accepted.
+    int64_t rope_table_len() const { return 2 * (-(int64_t)rope_table_pos_min) + 1; }
 };
 
 } // namespace ts

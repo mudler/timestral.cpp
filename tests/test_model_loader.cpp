@@ -104,9 +104,9 @@ static void print_config(const Config& c) {
     std::printf("config: name=%s patch_size=%u d_model=%u heads=%u head_dim=%u mlp=%u layers=%u quantiles=%u median=%u\n",
                 c.name.c_str(), c.patch_size, c.d_model, c.num_heads, c.head_dim(), c.mlp_hidden_dim, c.n_layers,
                 c.num_quantiles(), c.median_index());
-    std::printf("  block_size=%u context_length=%u rope: theta=%g partial=%g dim=%u pos_min=%d table_len=%u\n",
+    std::printf("  block_size=%u context_length=%u rope: theta=%g partial=%g dim=%u pos_min=%d table_len=%lld\n",
                 c.block_size, c.context_length, c.rope_theta, c.rope_partial_factor, c.rope_dim,
-                c.rope_table_pos_min, c.rope_table_len());
+                c.rope_table_pos_min, (long long)c.rope_table_len());
     std::printf("  attn_bias=%d mlp_bias=%d norm_eps=%g width_factor=%g min_scale=%g schedule:", c.attn_bias, c.mlp_bias,
                 (double)c.norm_eps, c.quantile_width_factor, c.minimum_scale);
     for (auto& s : c.block_schedule_names) std::printf(" %s", s.c_str());
@@ -142,6 +142,16 @@ static void check_file(const std::string& path, const std::string& label, bool c
         ggml_tensor* t = m.tensor(n);
         EXPECT(t->type == GGML_TYPE_F32, "all tensors are F32");
         EXPECT(m.in_mapping(t), "weights are used in place from the file mapping");
+    }
+    {   // run-time position lookup is checked against the table's own length
+        const int64_t len = m.tensor("rope.cos")->ne[1];
+        const int64_t lo = c.rope_table_pos_min, hi = lo + len - 1;
+        EXPECT(len == c.rope_table_len() && hi == -lo, "rope table is symmetric and as long as the config says");
+        EXPECT(m.rope_index(lo) == 0 && m.rope_index(hi) == len - 1 && m.rope_index(0) == -lo, "rope_index at the ends and at 0");
+        bool a = false, b = false;
+        try { m.rope_index(lo - 1); } catch (const Error&) { a = true; }
+        try { m.rope_index(hi + 1); } catch (const Error&) { b = true; }
+        EXPECT(a && b, "rope_index refuses positions outside the table");
     }
     std::string json = path.substr(0, path.size() - 5) + ".config.json";   // strip ".gguf"
     check_g02(c, json, label);
@@ -270,15 +280,27 @@ static void negative_tests(const std::string& src, const std::string& tag) {
     variant(src, "knots not increasing", [](Mut& m) { gguf_remove_key(m.g, "timestral.quantile_knots"); double v[3] = {0.9, 0.5, 0.1}; gguf_set_arr_data(m.g, "timestral.quantile_knots", GGUF_TYPE_FLOAT64, v, 3); }, false, "increasing");
     variant(src, "head count does not divide d_model", [](Mut& m) { gguf_set_val_u32(m.g, "timestral.attention.head_count", 5); }, false, "divisible");
     // a KV that changes the schema while the tensors stay: the shapes no longer match
-    variant(src, "patch_size changed", [](Mut& m) { gguf_set_val_u32(m.g, "timestral.patch_size", 16); }, false, "");
+    variant(src, "patch_size changed", [](Mut& m) { gguf_set_val_u32(m.g, "timestral.patch_size", 16); }, false, "table_pos_min");
+    // crafted: 32-bit arithmetic would wrap to a table of length 1 (patch_size 1, huge context, pos_min INT32_MIN)
+    variant(src, "overflowing rope table (wraps in 32 bits)", [](Mut& m) {
+        gguf_set_val_u32(m.g, "timestral.patch_size", 1);
+        gguf_set_val_u32(m.g, "timestral.context_length", 2147483644u);
+        gguf_set_val_u32(m.g, "timestral.block_size", 4);
+        gguf_set_val_i32(m.g, "timestral.rope.table_pos_min", INT32_MIN); }, false, "exceeds the supported maximum");
+    variant(src, "pos_min INT32_MIN with ordinary sizes", [](Mut& m) { gguf_set_val_i32(m.g, "timestral.rope.table_pos_min", INT32_MIN); }, false, "table_pos_min");
+    variant(src, "context too large for the table bound", [](Mut& m) {
+        gguf_set_val_u32(m.g, "timestral.patch_size", 1);
+        gguf_set_val_u32(m.g, "timestral.context_length", 2000000u); }, false, "exceeds the supported maximum");
     variant(src, "feed_forward_length changed", [](Mut& m) { gguf_set_val_u32(m.g, "timestral.feed_forward_length", 48); }, false, "shape");
     // bias flags that do not match the tensors in the file
+    // flipping a bias flag: a file without bias tensors now lacks them, a file with them has extras
+    const char* flip_needle = Model::load(src).config().attn_bias ? "unexpected tensor" : "missing tensor";
     variant(src, "bias flag flipped", [](Mut& m) {
         bool cur = gguf_get_val_bool(m.g, gguf_find_key(m.g, "timestral.attention.bias"));
-        gguf_set_val_bool(m.g, "timestral.attention.bias", !cur); }, false, "");
+        gguf_set_val_bool(m.g, "timestral.attention.bias", !cur); }, false, flip_needle);
     variant(src, "mlp bias flag flipped", [](Mut& m) {
         bool cur = gguf_get_val_bool(m.g, gguf_find_key(m.g, "timestral.mlp.bias"));
-        gguf_set_val_bool(m.g, "timestral.mlp.bias", !cur); }, false, "");
+        gguf_set_val_bool(m.g, "timestral.mlp.bias", !cur); }, false, flip_needle);
     variant(src, "gate turned off while gate tensors exist", [](Mut& m) { gguf_set_val_str(m.g, "timestral.attention.variate_gate", "none"); }, false, "unexpected tensor");
 
     // tensors
