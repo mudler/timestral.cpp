@@ -1,0 +1,27 @@
+timestral.cpp
+=============
+
+This project is a C++/ggml re-implementation of the Timestral time-series
+forecasting model. It follows the algorithms of the reference Python package
+closely, so it is treated as a work derived from that package.
+
+Upstream reference code
+  Timestral, Copyright (c) 2026 Mistral AI
+  https://github.com/mistralai/timestral
+  Licensed under the Apache License, Version 2.0
+  (https://www.apache.org/licenses/LICENSE-2.0).
+  Pinned at commit a534bdbd244d64f3d9d743f46c7bf6fc330ed4ff.
+
+Changes: the algorithms of the reference were re-written in C++ on top of ggml.
+The code in this repository is not the upstream code. It was changed and
+re-implemented, and it does not carry the upstream authors' endorsement.
+
+Model weights
+  The Timestral-209M weights are published separately by Mistral AI under their
+  own licence: https://huggingface.co/mistralai/Timestral-209M
+  The weights are not part of this repository and are not covered by this
+  notice.
+
+Third-party code
+  ggml, Copyright (c) the ggml authors, MIT licence:
+  https://github.com/ggml-org/ggml (git submodule in third_party/ggml).

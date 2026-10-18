@@ -1,0 +1,4 @@
+/build*/
+/work/
+*.gguf
+!tests/fixtures/tiny/*.gguf
