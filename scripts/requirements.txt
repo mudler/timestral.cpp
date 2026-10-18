@@ -1,0 +1,8 @@
+# Reference environment pins (docs/PLAN.md, section C.1). Python 3.12 exactly (not a pip requirement).
+# torch is installed from the CPU index by scripts/setup_reference_env.sh.
+torch==2.14.1
+numpy==2.5.4
+safetensors==0.8.0
+gguf==0.19.0
+huggingface_hub>=0.23
+timestral @ git+https://github.com/mistralai/timestral.git@a534bdbd244d64f3d9d743f46c7bf6fc330ed4ff

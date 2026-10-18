@@ -1,0 +1,39 @@
+{
+  "patch_size": 8,
+  "d_model": 32,
+  "num_heads": 4,
+  "mlp_hidden_dim": 64,
+  "block_schedule": [
+    "time",
+    "variate",
+    "time_variate",
+    "variate_time"
+  ],
+  "quantile_knots": [
+    0.05,
+    0.1,
+    0.25,
+    0.4,
+    0.5,
+    0.6,
+    0.75,
+    0.9,
+    0.95
+  ],
+  "block_size": 4,
+  "context_length": 2048,
+  "rope_theta": 10000.0,
+  "rope_partial_factor": 0.5,
+  "norm_eps": 1e-06,
+  "attn_bias": false,
+  "mlp_bias": false,
+  "time_attn_gate": "sdpa_sigmoid",
+  "variate_attn_gate": "sdpa_sigmoid",
+  "minimum_scale": 1e-06,
+  "use_asinh": true,
+  "stabilize_with_global": false,
+  "covariate_enabled": true,
+  "split_context_horizon_attn": true,
+  "attend_missing_patches": true,
+  "quantile_width_factor": 3.0
+}
