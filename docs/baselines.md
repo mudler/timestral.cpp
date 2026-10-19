@@ -24,6 +24,59 @@ Cases labelled `slow` (`ctx_cap`, `bench_32k`) run only with `--include-slow` or
 For a tiny checkpoint every layer is dumped; for the 209M model the `layers` field of the case
 lists the dumped layers (the last layer is always included).
 
+## Additive layer-22 reference for M2b
+
+The original `known_cov` case selects `[0,3,7,23]`. M2b requires time layers
+0 and 22; layer 23 is `time_variate`. Preserve the original suite for its
+canonical checks. Generate a separate, explicitly partial extension instead.
+Do not replace a missing layer with another layer or relax the case contract.
+
+Use a fresh `$EXT` directory outside the original suite. Keep all case settings
+unchanged except the additive layer selection in a copied specification:
+
+```bash
+mkdir -p "$EXT/real"
+$VENV/bin/python - "$EXT/cases.json" <<'PYCASE'
+import json
+import sys
+from pathlib import Path
+spec = json.loads(Path("tests/cases.json").read_text())
+case = next(c for c in spec["cases"] if c["name"] == "known_cov")
+assert case["layers"] == [0, 3, 7, 23]
+case["layers"] = [0, 3, 7, 22, 23]
+Path(sys.argv[1]).write_text(json.dumps(spec, indent=2) + "\n")
+PYCASE
+for m in f32 f32-math f64 f64-rerun f32-math-rerun; do
+  $VENV/bin/python scripts/gen_reference_baseline.py \
+    --model mistralai/Timestral-209M \
+    --revision 9874d252ab0aae16f7f7c999f98f98d6ad7d8365 \
+    --cases "$EXT/cases.json" --case known_cov --layers 0,3,7,22,23 \
+    --mode "$m" --output-dir "$EXT/real"
+done
+$VENV/bin/python tests/python/check_baseline.py \
+  --dir "$EXT/real" --cases "$EXT/cases.json" --case known_cov
+$VENV/bin/python scripts/compute_floors.py --dir "$EXT/real" --case known_cov
+$VENV/bin/python tests/python/check_baseline.py \
+  --dir "$EXT/real" --cases "$EXT/cases.json" --case known_cov
+$VENV/bin/python tests/python/check_rope_tables.py \
+  --gguf "$TIMESTRAL_TEST_GGUF" --dir "$EXT/real" --case known_cov
+TIMESTRAL_TEST_REAL_BASELINES="$EXT" TIMESTRAL_TEST_REAL_CASES=known_cov \
+  "$BUILD/tests/test_layer_time" --real
+```
+
+Run these commands serially with the existing offline cache and one torch/BLAS
+thread. Bound each command with a 1800-second timeout and a 12 GiB `RLIMIT_AS`
+launcher. Record `/usr/bin/time -v`, exit status, and available memory per command.
+The address-space limit is not an RSS or process-tree memory guarantee.
+
+The copied case specification preserves exact layer validation; no checker
+contract changes. Both checker runs must report `PARTIAL (not a milestone gate)`.
+The extension supplies only the missing M2b case, not a replacement full suite.
+Compare every original f32 record against the extension by dtype, shape, and raw
+bytes, including inputs and final outputs. Require exact equality for all common
+records and restrict additional records to layer 22 before accepting the extension.
+Keep the original suite for `uni_short` and all unrelated canonical checks.
+
 ## Input generator
 
 All inputs come from `numpy.random.default_rng(seed)` and are stored in the file

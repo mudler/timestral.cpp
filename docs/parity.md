@@ -392,7 +392,7 @@ RoPE rejects a removed required q-rotation tensor. An initial assertion expected
 removed its floor key. The gate correctly failed earlier at "missing metadata";
 the negative-check assertion was corrected, not the production gate.
 
-### Native time-layer replay (M2b implementation; real acceptance blocked)
+### Native time-layer replay (M2b)
 
 `Encoder::run_layer` replays only metadata-scheduled `time` layers. Inputs include
 explicit boolean masks and positions; empty masks select causal attention. A
@@ -425,6 +425,7 @@ Measured native results:
 |---|---:|---:|---:|---:|
 | tiny and tiny-bias, 28 case/variant pairs, 64 sign/block selections | 64 | 896 | 2.24021e-6 | 0.748127 |
 | real `uni_short`, layers 0 and 22, both signs | 4 | 56 | 4.42796e-4 | 0.711712 |
+| real `known_cov`, additive layer-22 extension, both signs | 4 | 56 | 7.08346e-4 | 0.647168 |
 
 Every comparison uses `max(2 * floor_tf, 16 * 2^-24)`; the fixed minimum is
 9.5367431640625e-7. Large absolute normalized errors on real tensors are compared
@@ -453,11 +454,35 @@ TIMESTRAL_TEST_REAL_CASES=known_cov "$BUILD/tests/test_layer_time" --real
 ```
 
 The first CTest command passes 13/13 with zero skips; the standalone loader also
-passes. The final `known_cov` command **fails**, correctly, at missing
-`pos.b0.layer.22.in` after its layer-0 positive replay passes. The published
-`known_cov` manifest selects `[0,3,7,23]`, but PLAN M2b requires layer 22. Its
-baseline contains no layer-22 inputs. No required tensor is skipped or silently
-replaced with layer 23. Therefore M2b real acceptance remains blocked pending
-an authorized reference extension with layer-22 tensors, stats and local floors
-for `known_cov`. Original references were not changed. This commit does not
-claim full M2b acceptance.
+passes. The original `known_cov` command fails at missing `pos.b0.layer.22.in`.
+That failure remains valid evidence: the original suite contains no layer-22
+inputs. An authorized additive extension resolves this reference gap without
+changing the native implementation, tolerances, or original suite.
+
+The [additive regeneration recipe](baselines.md#additive-layer-22-reference-for-m2b)
+uses the same pinned model, case settings, and five modes, with layers
+`[0,3,7,22,23]`. Exact metadata and coverage checks pass before and after strict
+floor calculation: 353 records, 23 call counters, 301 float tensors, 250 local
+floors, and 183 caps. No tensor has `2 * floor > cap` in this extension.
+Both checker runs explicitly report partial coverage, not full-suite acceptance.
+
+All 319 original f32 arrays are bit-identical in the extension, including two
+inputs and three final outputs. Its 34 additional arrays belong only to layer 22.
+Case settings and model provenance match, apart from the declared layer superset.
+G0.3 passes for f32 and f32-math: 3,240 table rows, 414,720 values, zero value
+differences, zero signed-zero differences, and zero out-of-range positions.
+
+Native `known_cov` replay passes with the baseline environment pointing only to
+the extension: one case, two sign/block selections, four layer replays, and
+56 NORM comparisons. Missing tensors: zero. Cap warnings: zero.
+Together with the original `uni_short` result above, this resolves the M2b
+reference blocker. It does not claim native end-to-end forecasting or acceptance
+of later milestones.
+
+All extension commands exit 0 under a 12 GiB address-space limit, one thread,
+and 1800-second timeouts. Peak generation RSS is 3,201,940 KiB (`f64-rerun`);
+its wall time is 26.92 seconds. Native replay takes 7.61 seconds with peak RSS
+228,924 KiB. Host available memory stays above the 6 GiB guard.
+The five files total 852,354,336 bytes after floor metadata. This exceeds the
+plan's per-case artifact estimate; the separate artifact-budget issue remains.
+No size budget or numerical gate is waived.
