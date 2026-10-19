@@ -193,3 +193,71 @@ These results are sampled evidence, not universal bounds.
 In particular, the zero-distance `asinh` and `sinh` samples do not prove universal ULP(0).
 No gate tolerance changes. This measurement alone does not complete M0d:
 full-suite floors, caps, and runtime RoPE evidence remain separate acceptance requirements.
+
+## M1 native scaler measurement
+
+The native host scaler passes all 14 canonical tiny cases for each of `tiny`
+and `tiny-bias` (28 fixtures). The test checks the first and last block of
+both positive and mirrored passes, counting a single-block pass once:
+64 pass/block selections in total. Configurations come from the converted
+GGUF models, not their JSON sidecars. No Python runs in the native tests.
+
+| Gate | Comparisons | Measured maximum | Required bound |
+|---|---:|---:|---:|
+| G1.1 causal loc | 64 | 0 ULP | 0 ULP |
+| G1.1 causal scale | 64 | 0 ULP | 0 ULP |
+| G1.2 causal scaled | 64 | 0 ULP | 2 ULP |
+| G1.2 known scaled | 16 | 0.9494 units of `u*M` | 4 |
+| G1.3 known loc | 16 | 1.195 units of `u*M` | 32 |
+| G1.3 known scale | 16 | 0.9638 units of `u*M` | 32 |
+| G1.3 binary | 16 | exact | exact |
+| G1.4 denormalization | 64 | 0 units of `u*M` | 6 |
+| Dumped clamp inputs | 52 | 0 ULP | exact |
+
+These measurements support the sequential double-prefix assumption P1 on
+these fixtures; they do not establish universal bit equality. Tolerances
+remain unchanged. Instance reductions sum float32 terms in double, round
+the sum once, then retain the reference's float32 arithmetic boundaries.
+Scaler compilation disables multiply/add contraction, not IEEE semantics.
+
+Unit tests also cover no observations, constants, indicator and non-indicator
+known rows, mixed known/nonknown replacement, prepared missing values,
+unprepared NaN propagation, observed and masked signed zeros, the separate
+affine epsilon clamp, sinh overflow, finite extrema, entirely nonfinite
+quantile axes, and invalid shapes/masks/settings. Smoke, parity-helper
+negative tests, tiny model loader, and real model loader pass separately.
+
+A concurrent real-reference run supplied only a subset during this check:
+11 of 14 cases, 22 pass/block selections, all available gates passing.
+The absent cases were `long_h`, `long_h_known`, and `ctx_cap`; the real scaler
+command returned **77**, not a full-suite pass. This does not complete real
+M1 acceptance, later milestones, or native end-to-end forecasting.
+The root acceptance run must recheck the complete real suite.
+
+### Reproduce
+
+`test_scaler_units` needs only the tiny GGUF models. `test_scaler` additionally
+uses `TIMESTRAL_TEST_TINY` as a suite root containing `tiny/` and `tiny-bias/`
+baseline directories. `TIMESTRAL_TEST_MODEL_ROOT` independently selects the
+model directory, defaulting to `tests/fixtures/tiny`. This does not change the
+existing model-loader test's `TIMESTRAL_TEST_TINY` convention: that test expects
+a model directory, so unset that variable when running loader regressions
+against the bundled fixtures.
+
+```sh
+cmake -S . -B "$TIMESTRAL_WORK/build" -DTIMESTRAL_BUILD_TESTS=ON
+cmake --build "$TIMESTRAL_WORK/build" -j2
+# Set TIMESTRAL_TEST_TINY to the canonical suite root for this command.
+ctest --test-dir "$TIMESTRAL_WORK/build" \
+  -R '^(test_scaler|test_scaler_units)$' --output-on-failure
+# Use the bundled tiny models for existing loader tests.
+env -u TIMESTRAL_TEST_TINY ctest --test-dir "$TIMESTRAL_WORK/build" \
+  -R '^(test_smoke|test_parity_helpers|test_model_loader|test_model_loader_209m)$' \
+  --output-on-failure
+```
+
+For real scaler gates, set `TIMESTRAL_TEST_REAL_BASELINES` to the suite root
+containing `real/`, and `TIMESTRAL_TEST_GGUF` to the converted real model.
+Then run `ctest --test-dir "$TIMESTRAL_WORK/build" -R '^test_scaler_209m$'
+--output-on-failure`. Missing cases or incompatible host metadata return 77;
+a malformed available fixture or numerical mismatch fails with 1.

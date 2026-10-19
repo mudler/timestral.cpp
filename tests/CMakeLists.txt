@@ -14,3 +14,8 @@ ts_add_test(test_model_loader)
 # The same executable on the real 209M file: skipped (77) when TIMESTRAL_TEST_GGUF is unset.
 add_test(NAME test_model_loader_209m COMMAND test_model_loader --real)
 set_tests_properties(test_model_loader_209m PROPERTIES SKIP_RETURN_CODE 77)
+
+ts_add_test(test_scaler)
+add_test(NAME test_scaler_units COMMAND test_scaler --unit)
+add_test(NAME test_scaler_209m COMMAND test_scaler --real)
+set_tests_properties(test_scaler_209m PROPERTIES SKIP_RETURN_CODE 77)

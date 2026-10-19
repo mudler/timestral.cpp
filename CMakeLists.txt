@@ -44,7 +44,14 @@ add_subdirectory(third_party/ggml)
 set(TIMESTRAL_SRC
     src/common.cpp
     src/backend.cpp
-    src/model_loader.cpp)
+    src/model_loader.cpp
+    src/scaler.cpp)
+
+# PyTorch materializes multiply/add separately at the scaler float32 boundaries.
+
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+  set_source_files_properties(src/scaler.cpp PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
+endif()
 
 if(TIMESTRAL_SHARED)
   add_library(timestral SHARED ${TIMESTRAL_SRC})
