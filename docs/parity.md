@@ -849,3 +849,57 @@ proved retrospectively. The earlier full-real evidence is superseded by a
 new full-real replay built from a committed review-fix snapshot, with archived
 source, executable and before/after checksums. No baseline or metric changes
 are involved in this correction.
+
+## M6a: isolated advancing frames and refinement (G6.1)
+
+`src/refine.cpp` replays the pinned reference scaler/forecaster algorithms on
+host double inputs, without invoking the encoder. The context moments and
+folded medians reuse `numpy_sum.hpp` (existing NumPy provenance and notice),
+with literal Hillis-Steele rounds and zero padding. The float32 frame casts
+and subtract/divide/multiply/add boundaries remain separate; contraction is
+disabled for this source. No additional third-party adaptation is introduced.
+
+The G6.1 magnitude is exactly
+`(|q| + |loc0|) * scale_j / scale0 + |loc_j|`, using dumped reference terms
+and float32-cast frames (the anchor frame for patch zero). No relative-error
+substitute, floor, or tolerance multiplier is added. Covariate rows retain
+quantile bits. The harness requires `refine.target_rows` for covariate cases;
+its legitimate absence in context-only cases means reference `None` (all
+rows). Unit regressions reject a missing covariate selector. Manifest and
+baseline block counts, plus the number of dumped prediction tensors, must
+agree; every positive and negative block is replayed.
+
+Finished native replay on the canonical suite:
+
+| Suite | Cases | Signed blocks | Frame tensors | Refined tensors | Single-patch exact bypasses |
+|---|---:|---:|---:|---:|---:|
+| tiny + tiny-bias | 28 (14 each) | 164 | 304 | 152 | 12 |
+| real | 15 | 36 | 60 | 30 | 6 |
+
+Every frame comparison measures maximum 0 ULP (gate ULP(1)); every refined
+comparison measures maximum `|d|/(u*M) = 0` (gate MAG(8)). Missing inputs and
+skips are zero. Units cover pairwise cancellation, empty observations,
+Bessel correction, offset-relative clipping, infinity/NaN propagation,
+float32 overflow clamping, signed-zero/NaN covariate preservation, shape
+and size overflow, invalid settings, and reference single-patch early return.
+Known-bad ULP and MAG controls must fail their comparisons.
+
+Verification commands, with `TIMESTRAL_TEST_TINY` and
+`TIMESTRAL_TEST_REAL_BASELINES` set to the canonical suite,
+`TIMESTRAL_TEST_GGUF` set to the real F32 model, and
+`TIMESTRAL_TEST_REAL_CASES=all`:
+
+```sh
+cmake --build "$BUILD" -j2
+ctest --test-dir "$BUILD" -j1 -R '^test_refine' -V --output-on-failure
+ctest --test-dir "$BUILD" -j1 -R '(^test_.*_units$|^test_parity_helpers$|^test_predict_metric$|^test_predict_companions$|^test_smoke$|^test_scaler$|^test_scaler_209m$|^test_masks$|^test_masks_209m$|^test_covariates$|^test_covariates_209m$|^test_rope$)' --output-on-failure
+ctest --test-dir "$BUILD" -j1 -R '^(test_head|test_predict_block)$' --output-on-failure
+```
+
+Results: 3/3 refine CTests, 24/24 bounded fast regression CTests, and 2/2
+tiny head/prediction CTests pass, zero skips. All 215 canonical baseline
+checksums remain unchanged. TDD starts with a compiled stub failing
+`M6a not implemented`, then passes units and full dumped-input replay.
+Existing M3/M4/M5 arithmetic sources are unchanged; the slow real encoder
+is deliberately not rerun. Full AR decode and end-to-end acceptance remain
+M6b work, not evidence claimed by this isolated gate.

@@ -46,6 +46,7 @@ set(TIMESTRAL_SRC
     src/backend.cpp
     src/model_loader.cpp
     src/scaler.cpp
+    src/refine.cpp
     src/masks.cpp
     src/covariates.cpp
     src/layers.cpp
@@ -57,7 +58,7 @@ set(TIMESTRAL_SRC
 # PyTorch materializes multiply/add separately at the scaler float32 boundaries.
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-  set_source_files_properties(src/scaler.cpp src/layers.cpp src/head.cpp src/covariates.cpp PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
+  set_source_files_properties(src/refine.cpp src/scaler.cpp src/layers.cpp src/head.cpp src/covariates.cpp PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
 endif()
 
 if(TIMESTRAL_SHARED)

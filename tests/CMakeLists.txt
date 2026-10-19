@@ -69,3 +69,7 @@ add_test(NAME test_covariates_209m COMMAND test_covariates --real)
 ts_add_test(test_predict_block)
 add_test(NAME test_predict_block_units COMMAND test_predict_block --unit)
 add_test(NAME test_predict_block_209m COMMAND test_predict_block --real)
+
+ts_add_test(test_refine)
+add_test(NAME test_refine_units COMMAND test_refine --unit)
+add_test(NAME test_refine_209m COMMAND test_refine --real)
