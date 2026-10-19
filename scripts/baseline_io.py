@@ -7,6 +7,9 @@ gguf-py does the reversal. KV values are python values.
 from __future__ import annotations
 
 import json
+import os
+import tempfile
+from contextlib import contextmanager
 from pathlib import Path
 
 import numpy as np
@@ -92,7 +95,36 @@ def storage_array(a: np.ndarray) -> tuple[np.ndarray, Q]:
     raise TypeError(f"unsupported dtype {a.dtype}")
 
 
+@contextmanager
+def atomic_path(path):
+    """Publish one complete sibling file; no directory-wide transaction is implied."""
+    path = Path(path)
+    fd, temporary = tempfile.mkstemp(prefix='.' + path.name + '.', suffix='.pending', dir=path.parent)
+    os.close(fd)
+    try:
+        yield Path(temporary)
+        with open(temporary, 'rb') as stream:
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
+def write_json(path, value):
+    with atomic_path(path) as temporary:
+        with temporary.open('w') as stream:
+            json.dump(value, stream, indent=1, sort_keys=True, allow_nan=False)
+            stream.flush()
+            os.fsync(stream.fileno())
+
+
 def write_baseline(path, tensors: dict, kv: dict) -> None:
+    with atomic_path(path) as temporary:
+        _write_baseline(temporary, tensors, kv)
+
+
+def _write_baseline(path, tensors, kv):
     w = gguf.GGUFWriter(str(path), ARCH)
     for k, v in kv.items():
         if k != "general.architecture":      # the writer sets it
@@ -108,10 +140,12 @@ def write_baseline(path, tensors: dict, kv: dict) -> None:
         if arr.ndim > 4:
             raise ValueError(f"{name}: more than 4 dimensions {arr.shape}")
         w.add_tensor(name, arr, raw_dtype=qt)
-    w.write_header_to_file()
-    w.write_kv_data_to_file()
-    w.write_tensors_to_file()
-    w.close()
+    try:
+        w.write_header_to_file()
+        w.write_kv_data_to_file()
+        w.write_tensors_to_file()
+    finally:
+        w.close()
 
 
 def is_float(a: np.ndarray) -> bool:
