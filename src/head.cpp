@@ -40,13 +40,14 @@ ggml_tensor* head_linear(ggml_context* ctx,const Model& m,const char* name,ggml_
 std::vector<float> monotone_quantiles(const Config& c, const std::vector<float>& raw) {
  const size_t Q=c.num_quantiles(),m=c.median_index();
  if(!Q||raw.empty()||raw.size()%Q)throw Error("invalid raw quantile layout");
+ for(float x:raw)if(std::isnan(x))throw Error("NaN raw quantile");
  std::vector<float> widths(Q),out(raw.size());
  for(size_t q=0;q<Q;++q) {
   double w=q<m?c.quantile_knots[q+1]-c.quantile_knots[q]:q>m?c.quantile_knots[q]-c.quantile_knots[q-1]:0;
   widths[q]=float(c.quantile_width_factor)*float(w);
  }
  const float limit=std::numeric_limits<float>::max();
- auto clamp=[&](float x){return std::max(-limit,std::min(limit,x));};
+ auto clamp=[&](float x){if(std::isnan(x))throw Error("NaN monotone quantile");return std::max(-limit,std::min(limit,x));};
  for(size_t i=0;i<raw.size();i+=Q){
   auto inc=[&](size_t q){float x=raw[i+q];return widths[q]*(x>20?x:std::log1p(activation_exp(x)));};
   // ATen CPU cumsum uses a double accumulator and casts each prefix.

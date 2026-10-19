@@ -746,3 +746,15 @@ float32 FMA rounding; narrow attention value contractions retain separate
 float32 multiply/add. The head uses the existing SLEEF-derived exponential
 and a double prefix accumulator with each cumsum prefix cast to float32.
 The retained component and end-to-end gates reject the pre-fix arithmetic.
+
+M4 companion admission checks are performed before flattening predictions:
+`mode` must declare `f64` or `f32-math`, respectively, and the prediction dtype
+must be F64 or F32. Every padded dimension must equal `[Q,h*patch_size,R,1]`.
+The reference must declare `f32`. Case, model configuration, source revision,
+HF revision and environment provenance must match across the three files;
+only the recorded SDPA kernel may differ between modes. Every file must
+match the current CPU/glibc host. Filenames alone do not establish identity.
+Scratch-GGUF boundary tests reject swapped modes, wrong dtypes, equal-size
+wrong shapes and provenance mismatches. Explicit real case selections reject
+unknown, duplicate and non-context cases rather than ignoring them.
+NaN raw head values are errors, never saturated into finite quantiles.

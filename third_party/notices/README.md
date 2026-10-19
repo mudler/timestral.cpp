@@ -43,3 +43,11 @@ Source: PyTorch commit `5c4886908584029761b579af026dcfb627c84070`:
 Changes: scalar lanes and explicit FMA replace vector operations, and ggml
 custom operations replace Torch tensor dispatch. No Torch runtime is linked.
 The SLEEF-derived exponential retains its separate Boost licence above.
+
+In `src/head.cpp`, `head_silu_f32` follows the pinned ATen SiLU operation
+boundaries from `Activation.cpp`; `monotone_quantiles` follows the CPU cumsum
+accumulator and per-prefix float32 cast in `ReduceOpsKernel.cpp` (same PyTorch
+revision above). The cumsum traversal itself is the model's inward-to-outward
+quantile order. These are scalar C++ adaptations, not a project-wide licence.
+
+- https://github.com/pytorch/pytorch/blob/5c4886908584029761b579af026dcfb627c84070/aten/src/ATen/native/cpu/ReduceOpsKernel.cpp

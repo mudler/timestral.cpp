@@ -2,12 +2,17 @@
 #include "head.hpp"
 #include "predict_block.hpp"
 #include "predict_metric.hpp"
+#include "predict_companions.hpp"
 void monotonic(const std::vector<float>& x,size_t Q) {
  require(!x.empty()&&x.size()%Q==0,"quantile shape");
  for(size_t i=0;i<x.size();++i)require(std::isfinite(x[i])&&(i%Q==0||x[i]>=x[i-1]),"nondecreasing quantiles");
 }
 void units(const Model& m) {
  const auto& c=m.config();size_t Q=c.num_quantiles(),D=c.d_model;
+ auto special=std::vector<float>(Q,0);special[c.median_index()]=NAN;rejects([&]{monotone_quantiles(c,special);});
+ special.assign(Q,INFINITY);special[c.median_index()]=0;auto extreme=monotone_quantiles(c,special);for(float v:extreme)require(std::isfinite(v),"infinite raw clamped");
+ special.assign(Q,-INFINITY);special[c.median_index()]=0;extreme=monotone_quantiles(c,special);for(float v:extreme)require(std::isfinite(v),"negative infinite raw clamped");
+ special.assign(Q,1000);monotonic(monotone_quantiles(c,special),Q);special.assign(Q,-1000);monotonic(monotone_quantiles(c,special),Q);
  auto raw=std::vector<float>(3*Q,0);raw[Q+c.median_index()]=-100;
  auto q=monotone_quantiles(c,raw);monotonic(q,Q);
  require(q[c.median_index()]==0&&q[Q+c.median_index()]==-100,"median unchanged");
@@ -56,9 +61,11 @@ void check(const Model& m,Fixture& f,Fixture& f64,Fixture& math,const std::strin
  if(ggml_get_tensor(f.b.ctx,(p+"mask.variate").c_str()))vm=f.mask(p+"mask.variate");
  auto result=PredictBlock(m).context_only(f.f(p+"args.inputs"),f.mask(p+"args.observed"),R,L*ps,h,mask,pos,vm);
  require(result.loc==f.f(p+"anchor.loc")&&result.scale==f.f(p+"anchor.scale"),"last context anchor");
+ predict_companion_values(f,p+"predict",GGML_TYPE_F32,R,h*ps,Q);
  auto y=f.f(p+"predict");require(result.output.size()==y.size(),"predict shape");monotonic(result.output,Q);
- auto values=[&](Fixture& source){auto t=source.tensor(p+"predict");if(t->type==GGML_TYPE_F64)return source.get<double>(p+"predict",GGML_TYPE_F64);auto v=source.f(p+"predict");return std::vector<double>(v.begin(),v.end());};
- require(tstest::compare_predict_normalized_v1(result.output,y,values(f64),values(math),result.loc,result.scale).ok,"G4.3");++checks;
+ auto truth=predict_companion_values(f64,p+"predict",GGML_TYPE_F64,R,h*ps,Q);
+ auto math_values=predict_companion_values(math,p+"predict",GGML_TYPE_F32,R,h*ps,Q);
+ require(tstest::compare_predict_normalized_v1(result.output,y,truth,math_values,result.loc,result.scale).ok,"G4.3");++checks;
 }
 int main(int argc,char**argv){try{
  const char* mr=getenv("TIMESTRAL_TEST_MODEL_ROOT");std::string models=mr?mr:TS_SOURCE_DIR "/tests/fixtures/tiny";
@@ -67,10 +74,12 @@ int main(int argc,char**argv){try{
  bool real=argc>1&&std::string(argv[1])=="--real",head_only=argc>2&&std::string(argv[2])=="--head-only";
  const char* root=getenv(real?"TIMESTRAL_TEST_REAL_BASELINES":"TIMESTRAL_TEST_TINY");require(root,"baseline root unset");size_t cases=0,blocks=0,failed=0;
  std::string subset=getenv("TIMESTRAL_TEST_REAL_CASES")?getenv("TIMESTRAL_TEST_REAL_CASES"):"all";
+ auto specs=manifest(real);auto selected=predict_case_selection(real?subset:"all",specs);
  for(auto variant:real?std::vector<std::string>{"real"}:std::vector<std::string>{"tiny","tiny-bias"}){
   const char* rm=getenv("TIMESTRAL_TEST_GGUF");require(!real||rm,"real model unset");auto m=Model::load(real?rm:models+"/timestral-"+variant+"-f32.gguf");
-  for(auto spec:manifest(real)) {if(spec.cov)continue;if(real&&subset!="all"&&(","+subset+",").find(","+spec.name+",")==std::string::npos)continue;
+  for(auto spec:specs) {if(!selected.count(spec.name))continue;
    auto path=std::string(root)+"/"+variant+"/baseline-"+spec.name+"-f32.gguf";require(tstest::host_gates_or_skip(path),"host gate failed");Fixture f(path);auto base=path.substr(0,path.size()-8);Fixture f64(base+"f64.gguf"),math(base+"f32-math.gguf");
+   validate_predict_companion(f,f64,"f64",spec.name);validate_predict_companion(f,math,"f32-math",spec.name);
    for(auto pass:{"pos.b0.","neg.b0."}){std::cerr<<"HEAD "<<variant<<"/"<<spec.name<<" "<<pass<<'\n';try{check(m,f,f64,math,pass,head_only);}catch(const std::exception& e){++failed;std::cerr<<"FAILED "<<variant<<"/"<<spec.name<<" "<<pass<<" "<<e.what()<<"\n";}++blocks;}++cases;
   }
  }
