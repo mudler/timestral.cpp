@@ -156,5 +156,40 @@ All special counts were zero; each histogram contains exactly 1,000 pairs.
 | softplus | 0: 865, 1: 135 | 1 |
 
 This smoke run is not the prescribed million-input acceptance measurement.
-The full run awaits independent review. Even an all-zero sampled histogram does
-not prove universal ULP(0). No probe result changes a gate tolerance automatically.
+
+### Full million-input measurement
+
+After independent review of the probe implementation, the prescribed full run
+completed successfully. The `probe-million.json` report records 1,000,000 float32
+inputs per function (5,000,000 compared pairs overall).
+
+The environment was Python 3.12.15, NumPy 2.5.4, torch 2.14.1+cpu,
+x86_64 with torch CPU capability AVX2, glibc 2.43, and one torch thread.
+Each function used NumPy `PCG64` with seed `20261020`, as specified above.
+
+For `asinh`, 500,000 inputs were signed logarithmic samples: 250,000 per sign,
+with magnitude endpoints `1e-30` and `1e7`. Another 500,000 were uniform samples
+in `[-10, 10)`, with the first three replaced by `-10`, `0`, and `10`.
+The overall `asinh` range was `[-1e7, 1e7]`.
+The other ranges were `[-80, 80)` for `sinh`, `[-1100, 1100)` for `sin`
+and `cos`, and `[-100, 30)` for `softplus`.
+Each included the lower endpoint, zero, and upper endpoint by replacement.
+The float32 rounding and softplus formulas follow the sampling contract above.
+
+| Function | Finite ULP histogram (distance: count) | Maximum |
+|---|---|---|
+| asinh | 0: 1000000 | 0 |
+| sinh | 0: 1000000 | 0 |
+| sin | 0: 949690, 1: 50310 | 1 |
+| cos | 0: 950147, 1: 49853 | 1 |
+| softplus | 0: 883800, 1: 116160, 2: 40 | 2 |
+
+For every function, `finite_count` and `total_count` were 1,000,000.
+All three special counts (`both_nan`, `same_infinity`, and
+`nonfinite_mismatch`) were zero for every function.
+The histogram and special counts sum to the total for each function.
+
+These results are sampled evidence, not universal bounds.
+In particular, the zero-distance `asinh` and `sinh` samples do not prove universal ULP(0).
+No gate tolerance changes. This measurement alone does not complete M0d:
+full-suite floors, caps, and runtime RoPE evidence remain separate acceptance requirements.
