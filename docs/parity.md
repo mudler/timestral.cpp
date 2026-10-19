@@ -560,3 +560,83 @@ the canonical known_cov fixture lacks layer 22. Explicit selections above avoid
 mistaking that known reference gap for a skip or overwriting canonical data.
 These results establish layer replay only, not full-encoder or forecasting
 acceptance. No performance, GPU, or quantized parity claim is made.
+
+## M3 native full encoder: code complete, real acceptance pending
+
+`Encoder::run` builds one CPU F32 graph from the dumped `tf.in`, runs every
+metadata-scheduled block, and applies `out_norm`. RoPE is gathered once. The
+persistent gallocr is reused across invocations; only requested layer outputs
+and the final norm are read back. The existing independent `run_layer` teacher
+API shares the graph construction. Graph metadata capacity is bounded before
+construction. There is no Python inference, dimension/schedule override, or
+change to `max(2 * floor, 16u)`.
+
+A throwing full-encoder placeholder produced a meaningful red unit failure;
+the implementation then passed the complete tiny suite. Both bias/gate
+configurations and all four layer kinds run, with both signs and first/last
+forecast blocks:
+
+| selection | blocks | local layer replays | comparisons | max normalized error | max error/tolerance |
+|---|---:|---:|---:|---:|---:|
+| 14 tiny cases × 2 variants | 64 | 256 | 576 | 1.53930e-6 | 0.580189 |
+| real multi, sparse diagnostic | 2 | 8 | 18 | 2.35221e-5 | 0.572035 |
+| real known_cov, sparse diagnostic | 2 | 8 | 18 | 1.13394e-5 | 0.701453 |
+| real nans, sparse diagnostic | 2 | 6 | 14 | 2.27916e-5 | 0.691452 |
+
+Tiny maximum adjacent-layer `err_l / err_previous` was 2.00871; no two
+consecutive ratios exceeded 1.5. Sparse real diagnostics cannot establish
+adjacent-layer amplification and explicitly print that limitation. The tests
+report repeated amplification without relaxing tolerances.
+
+**Real M3 is not accepted.** Actual canonical tensor inspection found all 24
+layers for `uni_short` (not the initially assumed sparse coverage), layers
+`[0,3,7,23]` for `multi` and `known_cov`, and `[0,3,23]` for `nans`.
+The separate existing known_cov extension adds layer 22 only. Strict tests for
+multi, known_cov, and nans exit 1 at missing layer 1, as required. Across both
+signs these lack 40, 40, and 42 layer references respectively. No reference was
+modified or generated for M3.
+
+There is also an actual numerical failure, **not a missing-reference failure**:
+strict canonical `uni_short` passes all 24 positive-pass local/free-running
+layers and out_norm, but fails the negative-pass teacher-forced layer 6 output:
+normalized error 3.277e-6 versus tolerance 3.178e-6 (approximately 1.031 times
+tolerance). The positive pass has a single amplification spike of 4.78753 at
+layer 15, not a repeated streak. These results require numerical localization
+before all-real acceptance; additional references alone do not resolve it.
+The combined real diagnostic stopped at this same failure, exit 1. Individual
+sparse diagnostics above exited 0 but are explicitly **not G3 acceptance**.
+Measured combined diagnostic peak RSS was 924604 KiB, below 12 GiB.
+
+Regression CTest: 21/21 pass, zero skips, excluding the old loader and the two
+real composite/encoder gates for separate execution. The standalone loader,
+real M2c multi/past_cov and real M2b extended known_cov all exited 0. Encoder
+units cover invalid embeddings, masks, positions, selection, malformed teacher
+boundaries, bounded graph capacity, teacher isolation, repeated calls, and
+shape growth/shrinkage. The CLI negative suite passed 3 tests, including nine
+missing tensor/floor/stat/cap mutations on temporary copies. No original
+baseline writes occur.
+
+Reproduce with caller-supplied `BUILD`, `SUITE`, `EXTENSION`, `SCRATCH`, and real
+`TIMESTRAL_TEST_GGUF`:
+
+```sh
+export TIMESTRAL_TEST_TINY="$SUITE" TIMESTRAL_TEST_REAL_BASELINES="$SUITE"
+cmake --build "$BUILD" -j2
+TIMESTRAL_TEST_REAL_CASES=uni_short ctest --test-dir "$BUILD" \
+  -E '^test_model_loader$|^test_layer_time_variate_209m$|^test_encoder_209m$' \
+  --output-on-failure
+env -u TIMESTRAL_TEST_TINY "$BUILD/tests/test_model_loader"
+TIMESTRAL_TEST_REAL_CASES=multi,past_cov "$BUILD/tests/test_layer_time_variate" --real
+TIMESTRAL_TEST_REAL_CASES=known_cov TIMESTRAL_TEST_REAL_BASELINES="$EXTENSION" \
+  "$BUILD/tests/test_layer_time" --real
+python3 tests/test_encoder_coverage.py "$BUILD/tests/test_encoder" . "$SUITE" "$SCRATCH"
+# Strict acceptance commands below currently fail; retain their actual exit status.
+TIMESTRAL_TEST_REAL_CASES=uni_short "$BUILD/tests/test_encoder" --real
+TIMESTRAL_TEST_REAL_CASES=multi "$BUILD/tests/test_encoder" --real
+# Diagnostic only, never a replacement for the strict gates:
+TIMESTRAL_TEST_REAL_CASES=multi,known_cov,nans \
+  "$BUILD/tests/test_encoder" --real --selected-reference
+```
+
+M4–M8, the C API, and Python-free forecasting end-to-end acceptance remain
+outside this encoder milestone.

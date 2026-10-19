@@ -13,7 +13,7 @@ struct Embedding { std::vector<float> input, hidden, output; };
 // Model must outlive Encoder. Input rows are contiguous [rows, length].
 class Encoder {
 public:
-    explicit Encoder(const Model& model) : model_(model) {}
+    explicit Encoder(const Model& model);
     Embedding embed(const std::vector<float>& values, const std::vector<int8_t>& observed, size_t rows, size_t length);
     Embedding project(const std::vector<float>& features, size_t rows, size_t patches);
     // Replay any scheduled kind: x is [rows, sequence, d_model]. Results own data.
@@ -26,7 +26,15 @@ public:
     LayerValues run_layer(size_t layer, const std::vector<float>& x, size_t rows,
         size_t sequence, const TimeMask& mask, const std::vector<int64_t>& positions,
         const LayerValues& teacher = {}, const std::vector<int8_t>& variate_mask = {});
+    // One scheduled graph from tf.in; only requested layer outputs are retained.
+    // Keys: layer.<index>.out and out_norm. No teacher overrides in this API.
+    LayerValues run(const std::vector<float>& x, size_t rows, size_t sequence,
+        const TimeMask& mask, const std::vector<int64_t>& positions,
+        const std::vector<size_t>& selected = {}, const std::vector<int8_t>& variate_mask = {});
 private:
+    LayerValues execute(size_t layer, const std::vector<float>& x, size_t rows, size_t sequence,
+        const TimeMask& mask, const std::vector<int64_t>& positions, const LayerValues& teacher,
+        const std::vector<int8_t>& variate_mask, bool full, const std::vector<size_t>& selected);
     const Model& model_;
     GraphRunner runner_;
 };

@@ -43,3 +43,9 @@ set_tests_properties(test_layer_time_variate_209m PROPERTIES SKIP_RETURN_CODE 77
 foreach(kind variate time_variate variate_time)
   add_test(NAME test_layer_${kind}_units COMMAND test_layer_${kind} --unit)
 endforeach()
+
+ts_add_test(test_encoder)
+add_test(NAME test_encoder_units COMMAND test_encoder --unit)
+# Strict real gate: sparse canonical dumps cannot satisfy every-layer acceptance.
+add_test(NAME test_encoder_209m COMMAND test_encoder --real)
+set_tests_properties(test_encoder_209m PROPERTIES SKIP_RETURN_CODE 77)
