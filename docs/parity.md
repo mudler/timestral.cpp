@@ -391,3 +391,73 @@ RoPE rejects a removed required q-rotation tensor. An initial assertion expected
 "missing tensor" after replacing every occurrence of a patch name, but this also
 removed its floor key. The gate correctly failed earlier at "missing metadata";
 the negative-check assertion was corrected, not the production gate.
+
+### Native time-layer replay (M2b implementation; real acceptance blocked)
+
+`Encoder::run_layer` replays only metadata-scheduled `time` layers. Inputs include
+explicit boolean masks and positions; empty masks select causal attention. A
+TwoStream split validates the closed context-to-horizon quadrant and evaluates
+its mathematically equivalent full mask. This is not covariate preparation, a
+full encoder, or decoding. Converted head-major QKV weights remain read-only;
+only the returned fused-QKV diagnostic is reordered to reference layout.
+
+The CPU parity path uses custom ggml graph kernels for widened affine dots,
+normalization and non-flash stable SDPA. Activations and weights remain F32;
+normalization rounds its normalized activation before the learned scale.
+The initial rounded F32 normalization exceeded the `cat_uni` norm floor
+(1.367e-6 versus 1.152e-6); independent recomputation identified reduction/inverse
+rounding. Widening that evaluation passes the existing floor without changing
+it. Scalar widened kernels are correctness-first, not an inference-speed claim;
+quantized and GPU kernels remain future work.
+
+Tests require each available scheduled time layer in both tiny variants, all 14
+canonical tiny cases, both sign passes, and first/last blocks. Independent local
+replays consume dumped norm, q/k/v, tables, rotated q/k, SDPA, gate, gated output,
+attention output and MLP norm. The whole layer separately consumes its dumped
+layer input and uses that layer's local `floor_tf`; no global tolerance or
+upstream `floor_fr` substitutes for a local gate. Required numel/rms, applicable
+kappa/max_logit/rho, floors and applicable caps are validated. Missing required
+outputs or metadata fail rather than skip.
+
+Measured native results:
+
+| selection | layer replays | NORM comparisons | max normalized error | max error/tolerance |
+|---|---:|---:|---:|---:|
+| tiny and tiny-bias, 28 case/variant pairs, 64 sign/block selections | 64 | 896 | 2.24021e-6 | 0.748127 |
+| real `uni_short`, layers 0 and 22, both signs | 4 | 56 | 4.42796e-4 | 0.711712 |
+
+Every comparison uses `max(2 * floor_tf, 16 * 2^-24)`; the fixed minimum is
+9.5367431640625e-7. Large absolute normalized errors on real tensors are compared
+to their own published floors, never the tiny limits. Thirty tiny cap warnings
+occur on layer-0 residual outputs across the selected cases; the existing cap
+sanity warnings do not replace the floor bound and all those comparisons pass.
+These are the same published floor/cap disagreements, not relaxed tolerances.
+
+Negative controls cover head interleave (including a comparator rejection),
+mask changes, skipped gates, non-time/out-of-range indices, malformed teacher
+layouts, malformed weight/bias dimensions, empty shapes, fully masked queries,
+nonboolean masks, forbidden split quadrants and positions outside stored tables.
+A persistent Encoder is replayed across repeated/grown/shrunk graphs.
+
+Verification (suite/model paths are caller supplied):
+
+```sh
+cmake --build "$BUILD" -j2
+# TIMESTRAL_TEST_TINY is the baseline suite root for component tests, but the
+# older loader test interprets it as a model directory. Run that test separately.
+TIMESTRAL_TEST_REAL_CASES=uni_short ctest --test-dir "$BUILD" \
+  -E '^test_model_loader$' --output-on-failure
+env -u TIMESTRAL_TEST_TINY "$BUILD/tests/test_model_loader"
+TIMESTRAL_TEST_REAL_CASES=uni_short "$BUILD/tests/test_layer_time" --real
+TIMESTRAL_TEST_REAL_CASES=known_cov "$BUILD/tests/test_layer_time" --real
+```
+
+The first CTest command passes 13/13 with zero skips; the standalone loader also
+passes. The final `known_cov` command **fails**, correctly, at missing
+`pos.b0.layer.22.in` after its layer-0 positive replay passes. The published
+`known_cov` manifest selects `[0,3,7,23]`, but PLAN M2b requires layer 22. Its
+baseline contains no layer-22 inputs. No required tensor is skipped or silently
+replaced with layer 23. Therefore M2b real acceptance remains blocked pending
+an authorized reference extension with layer-22 tensors, stats and local floors
+for `known_cov`. Original references were not changed. This commit does not
+claim full M2b acceptance.

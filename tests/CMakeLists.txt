@@ -30,3 +30,7 @@ add_test(NAME test_rope_units COMMAND test_rope --unit)
 # Real component parity is opt-in while reference artifacts are generated.
 # Invoke the executables with --real and TIMESTRAL_TEST_REAL_CASES=all or a
 # comma-separated explicit subset; subset output cannot claim full acceptance.
+ts_add_test(test_layer_time)
+add_test(NAME test_layer_time_units COMMAND test_layer_time --unit)
+add_test(NAME test_layer_time_209m COMMAND test_layer_time --real)
+set_tests_properties(test_layer_time_209m PROPERTIES SKIP_RETURN_CODE 77)
