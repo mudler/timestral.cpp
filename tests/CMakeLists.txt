@@ -49,3 +49,7 @@ add_test(NAME test_encoder_units COMMAND test_encoder --unit)
 # Strict real gate: sparse canonical dumps cannot satisfy every-layer acceptance.
 add_test(NAME test_encoder_209m COMMAND test_encoder --real)
 set_tests_properties(test_encoder_209m PROPERTIES SKIP_RETURN_CODE 77)
+
+add_test(NAME test_encoder_negative_layer6_209m COMMAND test_encoder --real --negative-layer6)
+set_tests_properties(test_encoder_negative_layer6_209m PROPERTIES
+  SKIP_RETURN_CODE 77 ENVIRONMENT "TIMESTRAL_TEST_REAL_CASES=uni_short")

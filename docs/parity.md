@@ -640,3 +640,71 @@ TIMESTRAL_TEST_REAL_CASES=multi,known_cov,nans \
 
 M4–M8, the C API, and Python-free forecasting end-to-end acceptance remain
 outside this encoder milestone.
+
+### M3 numerical repair: strict real encoder gates
+
+The negative `uni_short` layer-6 failure is repaired without changing any
+comparison tolerance, floor, reference tensor, or model weight. Strict replay
+now passes both signs of all 24 layers and `out_norm`: 48 local layers, 98
+comparisons, maximum error/tolerance 0.5, no missing layers. The separate
+all-layer extension for `multi`, `known_cov`, and `nans` passes 144 local
+layers and 294 comparisons, maximum error/tolerance 0.670333, no missing
+layers. These are explicit real subsets, not all-manifest acceptance.
+
+Localization on reference inputs found individually acceptable component
+rounding whose combination exceeded the local layer floor. Widened RMSNorm
+removed the reference's F32 square/mean/rsqrt/multiply boundaries. Matching
+the pinned CPU cascade made the layer-6 regression pass, but exposed another
+local failure at negative layer 20. Independent contraction probes identified
+192-wide FMA panels: all 155,648 tested MLP projection values matched Torch
+exactly, unlike widened or single-running F32 sums. The small SDPA GEMM path
+uses non-fused lane reductions, unlike the large sequential-FMA path. The
+implementation chooses by execution dimensions, never by layer or case name.
+
+CPU flash attention also normalizes after the value contraction, uses a
+vector exponential polynomial on full eight-value chunks, and libm on tails.
+Context queries use the actual context key count, not padded masked horizon
+keys. SiLU/sigmoid require the reference's vector exponential rounding:
+independent binary probes matched 100,000 exponential values and all 417,792
+sampled SiLU activations. The scalar implementation emulates this AVX2 F32
+order on every CPU; other reference CPU capabilities are not claimed bitwise
+identical. The reference Torch source/binary pin is
+`5c4886908584029761b579af026dcfb627c84070`; model source remains
+`a534bdbd244d64f3d9d743f46c7bf6fc330ed4ff`.
+
+Repeated amplification remains visible, not suppressed: one report for
+`uni_short`, five for the three extended cases; maximum adjacent ratios are
+2.03883 and 56.9861. Near-zero predecessor errors can produce large ratios.
+All resulting strict floor comparisons pass, but these reports still warrant
+review under G3.2; this is not a claim that amplification disappeared.
+
+Teacher-boundary diagnosis also found a reuse crash inside graph allocation:
+same-size graphs with changed leaf assignments reused an invalid allocation
+plan. Refreshing the allocator reservation before allocation repairs the
+crashing sequence. Encoder units now replay each teacher boundary in order.
+RMS units cover small/non-multiple dimensions and rounded F32 boundaries.
+The dedicated `test_encoder_negative_layer6_209m` fails on the original
+implementation and checks that a corrupted output is rejected.
+
+Verification (caller supplies `BUILD`, `SUITE`, `EXTENSION`, and the real
+`TIMESTRAL_TEST_GGUF`; no private paths are required):
+
+```sh
+export TIMESTRAL_TEST_TINY="$SUITE" TIMESTRAL_TEST_REAL_BASELINES="$SUITE"
+cmake --build "$BUILD" -j2
+TIMESTRAL_TEST_REAL_CASES=uni_short "$BUILD/tests/test_encoder" --real
+TIMESTRAL_TEST_REAL_CASES=multi,known_cov,nans \
+  TIMESTRAL_TEST_REAL_BASELINES="$EXTENSION" "$BUILD/tests/test_encoder" --real
+TIMESTRAL_TEST_REAL_CASES=uni_short ctest --test-dir "$BUILD" \
+  -E '^test_model_loader$|^test_layer_time_variate_209m$|^test_encoder_209m$' \
+  --output-on-failure
+env -u TIMESTRAL_TEST_TINY "$BUILD/tests/test_model_loader"
+TIMESTRAL_TEST_REAL_CASES=multi,past_cov \
+  "$BUILD/tests/test_layer_time_variate" --real
+```
+
+The regression selection passes 22/22, zero skips, including the 28 tiny
+cases, bias/gate variants, scaler/patch/RoPE gates, and negative-layer-6 test.
+Separate loader, real M2c (`multi,past_cov`), and extended real M2b
+(`known_cov`, layers 0/22) checks also pass. M4 and later milestones remain
+outside this repair.

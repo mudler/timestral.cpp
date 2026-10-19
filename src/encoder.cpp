@@ -83,8 +83,8 @@ LayerValues Encoder::execute(size_t layer,const std::vector<float>& values,size_
         auto q=part(0,"q"),k=part(1,"k"),v=part(2,"v");
         if(time){auto cos=boundary(n+"cos",cos_input);auto sin=boundary(n+"sin",sin_input);
             q=boundary(n+"q_rope",apply_rope(ctx,q,cos,sin));k=boundary(n+"k_rope",apply_rope(ctx,k,cos,sin));}
-        auto sdpa=boundary(n+"sdpa",time?attention_time(ctx,q,k,v,am):attention_variate(ctx,q,k,v,vm));auto gated=sdpa;
-        if((time?c.time_gate:c.variate_gate)==Gate::SdpaSigmoid){auto gate=boundary(n+"gate",affine(ctx,m,a+"gate",xn,c.attn_bias));gated=ggml_mul(ctx,sdpa,ggml_sigmoid(ctx,gate));}
+        auto sdpa=boundary(n+"sdpa",time?attention_time(ctx,q,k,v,am,mask.enc_len):attention_variate(ctx,q,k,v,vm));auto gated=sdpa;
+        if((time?c.time_gate:c.variate_gate)==Gate::SdpaSigmoid){auto gate=boundary(n+"gate",affine(ctx,m,a+"gate",xn,c.attn_bias));gated=ggml_mul(ctx,sdpa,sigmoid(ctx,gate));}
         if(!time)gated=ggml_cont(ctx,ggml_permute(ctx,gated,0,2,1,3));
         gated=boundary(n+"gated",gated);
         auto att=boundary(n+"out",affine(ctx,m,a+"out",gated,c.attn_bias));
@@ -98,7 +98,8 @@ LayerValues Encoder::execute(size_t layer,const std::vector<float>& values,size_
     if(full)out["out_norm"]=rms_norm(ctx,x,m.tensor("out_norm.weight"),c.norm_eps);
     for(const auto& it:teacher)if(!out.count(it.first))throw Error("unknown teacher boundary");
     std::vector<ggml_tensor*> outputs;for(auto& it:out)outputs.push_back(it.second);runner.allocate(outputs);
-    for(auto& u:uploads)runner.upload(u.first,*u.second);runner.compute();LayerValues result;for(auto& it:out)result[it.first]=runner.read(it.second);
+    // Teacher boundaries can prune upstream inputs from the graph.
+    for(auto& u:uploads)if(u.first->buffer)runner.upload(u.first,*u.second);runner.compute();LayerValues result;for(auto& it:out)result[it.first]=runner.read(it.second);
     // Diagnostic fused projection follows the reference's original interleaved order.
     if(!full)for(size_t j=0;j<axes.size();++j){auto& z=result.at("attn."+std::to_string(j)+".qkv");auto copy=z;for(size_t token=0;token<R*S;++token)for(size_t i=0;i<3;++i)for(size_t h=0;h<H;++h)for(size_t d=0;d<hd;++d)z[token*3*D+i*D+d*H+h]=copy[token*3*D+i*D+h*hd+d];}
     return result;

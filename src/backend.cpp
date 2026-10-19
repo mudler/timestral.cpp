@@ -99,7 +99,9 @@ ggml_context* GraphRunner::begin() {
 void GraphRunner::allocate(const std::vector<ggml_tensor*>& outputs) {
     if (!graph_ || allocated_ || outputs.empty()) throw Error("graph has no outputs");
     for (auto* t : outputs) { if (!t) throw Error("null graph output"); ggml_set_output(t); ggml_build_forward_expand(graph_,t); }
-    if (!ggml_gallocr_alloc_graph(allocator_, graph_)) throw Error("cannot allocate graph buffers");
+    // Equal node counts do not imply identical leaf allocation assignments
+    // after teacher overrides replace graph edges. Refresh the plan.
+    if (!ggml_gallocr_reserve(allocator_, graph_) || !ggml_gallocr_alloc_graph(allocator_, graph_)) throw Error("cannot allocate graph buffers");
     allocated_ = true;
 }
 void GraphRunner::upload(ggml_tensor* t, const std::vector<float>& values) {

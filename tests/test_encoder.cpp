@@ -1,5 +1,20 @@
 #include "layer_test_helpers.hpp"
 size_t selections=0,missing=0,amplified=0;double max_amplification=0;
+void rms_boundaries() {
+ for(int D:{1,3,7,8,9,31,32,33,511,512,513,768}) {
+  GraphRunner r;auto ctx=r.begin();
+  auto x=ggml_new_tensor_3d(ctx,GGML_TYPE_F32,D,2,1);
+  auto w=ggml_new_tensor_1d(ctx,GGML_TYPE_F32,D);
+  ggml_set_input(x);ggml_set_input(w);auto y=rms_norm(ctx,x,w,0.125f);r.allocate({y});
+  std::vector<float> values(2*D),scale(D);
+  for(int d=0;d<D;++d){values[d]=2;values[D+d]=-4;scale[d]=1.3f+float(d%3);}
+  r.upload(x,values);r.upload(w,scale);r.compute();auto out=r.read(y);
+  for(int row=0;row<2;++row)for(int d=0;d<D;++d){
+   float v=values[row*D+d];float inv=1.0f/std::sqrt(v*v+0.125f);
+   require(out[row*D+d]==(v*inv)*scale[d],"RMS F32 boundaries and reduction tails");
+  }
+ }
+}
 void units(const Model& m) {
  Encoder e(m);size_t D=m.config().d_model;std::vector<float>x(6*D);
  for(size_t i=0;i<x.size();++i)x[i]=std::sin(float(i)*.17f);
@@ -20,12 +35,16 @@ void units(const Model& m) {
  rejects([&]{e.run(x,3,2,{},pos,{},std::vector<int8_t>(18,2));});
  rejects([&]{e.run_layer(0,x,3,2,{},pos,{{"bogus",{1}}});});
  rejects([&]{e.run_layer(0,x,3,2,{},pos,{{"mlp_norm",{1}}});});
+ for(auto n:{"attn.0.norm","attn.0.sdpa","attn.0.gated","attn.0.out","mlp_norm","mlp"}) {
+  auto v=e.run_layer(0,x,3,2,{},pos).at(n);e.run_layer(0,x,3,2,{},pos,{{n,v}});
+ }
  auto clean=e.run_layer(0,x,3,2,{},pos).at("out");
  auto bad=e.run_layer(0,x,3,2,{},pos,{{"mlp",std::vector<float>(x.size(),10)}}).at("out");
  require(clean!=bad,"teacher negative affects output");require(a==e.run(x,3,2,{},pos,all),"no leaked teacher overrides");
  rejects([&]{GraphRunner r(1000001);});
 }
 int main(int argc,char**argv){try{
+ rms_boundaries();
  const char* mr=getenv("TIMESTRAL_TEST_MODEL_ROOT");std::string root=mr?mr:TS_SOURCE_DIR "/tests/fixtures/tiny";
  for(auto v:{"tiny","tiny-bias"})units(Model::load(root+"/timestral-"+v+"-f32.gguf"));
  if(argc>1&&std::string(argv[1])=="--unit")return 0;
@@ -41,7 +60,17 @@ int main(int argc,char**argv){try{
    bool present=ggml_get_tensor(f.b.ctx,(b+"in").c_str())&&ggml_get_tensor(f.b.ctx,(b+"out").c_str());
    if(!present){++missing;std::cerr<<"MISSING G3 layer "<<b<<'\n';require(selected_only,"G3.1 requires EVERY layer reference");continue;}selected.push_back(l);
   }
-  Encoder e(m);auto full=e.run(f.f(p+"tf.in"),R,S,mask,pos,selected,vm);double prev=0;size_t prior=0,streak=0;
+  Encoder e(m);
+  if(argc>2 && std::string(argv[2])=="--negative-layer6") {
+   if(p!="neg.b0.")return;
+   require(m.config().n_layers>6,"negative layer 6 regression requires real model");
+   auto b=p+"layer.6.";auto x=e.run_layer(6,f.f(b+"in"),R,S,mask,pos,{},vm).at("out");
+   compare(f,b+"out",x);auto ref=f.f(b+"out");
+   x.at(0)+=float(100*std::max(stat(f,b+"out","rms"),1.));
+   require(!tstest::compare_norm(x,ref,f.number("floor_tf."+b+"out"),f.number("cap."+b+"out"),"negative layer 6 corrupt output").ok,"nonvacuous layer 6 comparator");
+   ++selections;++layers;return;
+  }
+  auto full=e.run(f.f(p+"tf.in"),R,S,mask,pos,selected,vm);double prev=0;size_t prior=0,streak=0;
   for(size_t l:selected){auto b=p+"layer."+std::to_string(l)+".";
    auto local=e.run_layer(l,f.f(b+"in"),R,S,mask,pos,{},vm);compare(f,b+"out",local.at("out"));++layers;
    auto&x=full.at("layer."+std::to_string(l)+".out");compare(f,b+"out",x,"floor_fr.");
