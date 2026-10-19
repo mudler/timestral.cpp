@@ -696,7 +696,23 @@ One baseline GGUF per case and mode: `baseline-<case>-<mode>.gguf`, written with
 loader code as parakeet.cpp's `tests/parity.hpp` (`load_baseline`, `load_baseline_i32`,
 KV readers).
 
-- Float tensors: F32 for `f32` modes, F64 for `f64` mode. NaN is kept in the stored inputs.
+- Model float tensors: F32 for `f32` modes, F64 for `f64` mode, with the
+  following categorical producer contracts (also in `f32-math`):
+
+  | Record suffix | f32 / f32-math | f64 |
+  | --- | --- | --- |
+  | `enc_cat.N.codes` | F64 | F64 |
+  | `enc_cat.N.target`, `enc_cat.N.out` | F32 | F64 |
+  | `target_encode.N.ctx`, `.past`, `.future` | F64 | F64 |
+  | `target_encode.N.out_past`, `.out_future` | F32 | F32 |
+
+  The f64 truth patch upcasts the forecaster encoding result, not the NumPy
+  target-encoding outputs. Stored numeric inputs remain F32; stored categorical
+  inputs remain F64. NaN is kept in genuine context/code inputs, including
+  `enc_cat.N.codes` / `.target` and `target_encode.N.ctx` / `.past` / `.future`.
+  Floor comparisons require matching NaN positions. Encoded outputs cannot
+  contain NaN or infinity, even when the multivariate raw-code path retains a
+  missing code. No input or output may contain infinity.
 - Bool tensors (masks, observation masks, `key_valid`, `active`): I8 (0/1).
 - Integer tensors (positions, `first_obs`, `anchor`, `group_ids`, `role_ids`, slots): I32.
 - Torch row-major arrays are written as they are; GGUF reverses the shape.

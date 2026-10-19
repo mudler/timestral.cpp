@@ -170,8 +170,12 @@ def rerun_names(names):
 
 def allows_input_nan(name):
     """Raw context copies retain the missing-value positions from the source."""
-    return name.startswith('input.') or bool(re.search(
-        r'\.(args\.(inputs|known_future)|scale\.in|refine\.context|assemble\.rows|cap\.rows)$', name))
+    if semantic_type(name) == 'input':
+        return True
+    rel = re.sub(r'^(pos|neg)\.(?:b\d+\.)?', '', name)
+    return bool(re.fullmatch(
+        r'args\.(inputs|known_future)|scale\.in|refine\.context|assemble\.rows|cap\.rows|'
+        r'enc_cat\.\d+\.(codes|target)|target_encode\.\d+\.(ctx|past|future)', rel))
 
 
 def finite_nonnegative(value):
@@ -281,11 +285,20 @@ def validate_records(t, kv, case, mode, cfg):
         elif kind in ('float', 'input') and not bio.is_float(a):
             bad(f'{name}: wrong dtype for {n}: {a.dtype}; requires floating point')
         if bio.is_float(a):
-            # Input/category and host-double islands need not follow model precision.
-            if not n.startswith('input.') and '.frames.' not in n:
+            # NumPy target encoding consumes doubles but returns float32 even
+            # in truth mode. The truth wrapper upcasts only enc_cat's result;
+            # its target already follows the model's prepared context precision.
+            rel = re.sub(r'^(pos|neg)\.(?:b\d+\.)?', '', n)
+            if re.fullmatch(r'enc_cat\.\d+\.codes|target_encode\.\d+\.(ctx|past|future)', rel):
+                want = np.float64
+            elif re.fullmatch(r'target_encode\.\d+\.(out_past|out_future)', rel):
+                want = np.float32
+            elif kind == 'input' or '.frames.' in n:
+                want = None  # Stored inputs have their own precision checks below.
+            else:
                 want = np.float64 if mode.startswith('f64') else np.float32
-                if a.dtype != want:
-                    bad(f'{name}: wrong dtype for {n}: {a.dtype}')
+            if want is not None and a.dtype != want:
+                bad(f'{name}: wrong dtype for {n}: {a.dtype}')
             if not mode.endswith('rerun'):
                 rms = kv.get(f'stat.{n}.rms')
                 if not finite_nonnegative(rms) or kv.get(f'stat.{n}.numel') != a.size:
