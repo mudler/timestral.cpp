@@ -220,11 +220,66 @@ def validate_exception(t, kv, case, mode, cfg):
         bad(f'{name}: reference error and outputs mixed')
 
 
+# Explicit generator record vocabulary. Never infer numerical semantics from the
+# submitted dtype: matching integer corruption in all modes must still fail.
+_BOOL_RECORDS = {
+    'args.observed', 'args.known_future_mask', 'scale.observed',
+    'mask.time', 'mask.variate', 'mask.key_valid', 'mask.obs_per_patch',
+    'mask.block_active', 'known.is_binary', 'known.rows', 'refine.mask',
+    'refine.target_rows', 'cap.mask', 'assemble.mask', 'assemble.known_future_mask',
+}
+_INT_RECORDS = {
+    'args.group_ids', 'args.role_ids', 'args.horizon_patches', 'positions',
+    'tf.positions', 'tf.enc_len', 'first_obs.group', 'group.inverse',
+    'mask.block_anchor', 'assemble.role_ids', 'assemble.n_tgt',
+}
+_FLOAT_RECORDS = {
+    'args.inputs', 'args.known_future', 'predict', 'scale.in', 'scaled',
+    'loc', 'scale', 'known.loc', 'known.scale', 'known.scaled',
+    'patch.in', 'patch.hidden_out', 'patch.out', 'tf.in', 'out_norm',
+    'head.in', 'head.raw', 'head.monotone', 'denorm.in', 'anchor.loc',
+    'anchor.scale', 'refined', 'block_refined', 'refine.context',
+    'refine.loc', 'refine.scale', 'refine.clamp.in', 'refine.clamp.out',
+    'frames.in.sinh_median', 'frames.loc', 'frames.scale',
+    'assemble.rows', 'assemble.known_future', 'cap.in', 'cap.rows', 'cap.out', 'cap.scale',
+}
+_LAYER_FLOAT = re.compile(
+    r'layer\.\d+\.(in|out|mlp_norm|mlp|attn\.\d+\.'
+    r'(norm|out|qkv|q|k|v|gated|sdpa|gate|q_rope|k_rope|cos|sin))')
+_CATEGORY_FLOAT = re.compile(
+    r'(enc_cat\.\d+\.(codes|target|out)|'
+    r'target_encode\.\d+\.(ctx|past|future|out_past|out_future))')
+
+
+def semantic_type(n):
+    if n in {'input.context', 'input.past', 'input.known', 'input.cat_past', 'input.cat_known'}:
+        return 'input'
+    if n in {'final.quantiles', 'final.raw.pos', 'final.raw.neg'}:
+        return 'float'
+    match = re.fullmatch(r'(pos|neg)\.(?:b\d+\.)?(.+)', n)
+    rel = match[2] if match else n
+    if match:
+        if rel in _BOOL_RECORDS:
+            return 'bool'
+        if rel in _INT_RECORDS:
+            return 'int'
+        if rel in _FLOAT_RECORDS or _LAYER_FLOAT.fullmatch(rel):
+            return 'float'
+    if _CATEGORY_FLOAT.fullmatch(rel):
+        return 'float'
+    return None
+
+
 def validate_records(t, kv, case, mode, cfg):
     name = case['name'] + ':' + mode
     for n, a in t.items():
         if not a.size:
             bad(f'{name}: empty tensor {n}')
+        kind = semantic_type(n)
+        if kind is None:
+            bad(f'{name}: unknown record {n}; no semantic dtype contract')
+        elif kind in ('float', 'input') and not bio.is_float(a):
+            bad(f'{name}: wrong dtype for {n}: {a.dtype}; requires floating point')
         if bio.is_float(a):
             # Input/category and host-double islands need not follow model precision.
             if not n.startswith('input.') and '.frames.' not in n:

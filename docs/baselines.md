@@ -114,6 +114,15 @@ Each successful case requires all five modes.
 The checker derives both passes, every decode block, and required components from the requested case and model configuration.
 Deleting a complete pass or later block does not reduce the required coverage.
 The checker requires condition statistics for each relevant tensor, not merely one statistic somewhere in the file.
+The checker and floor preflight use an explicit generator record vocabulary to
+classify numerical, integer, boolean, and stored-input records. Numerical records
+must be floating point in every full and rerun mode, including `block_refined`.
+Matching integer corruption across all five modes is not valid numerical evidence.
+Unknown record names fail closed instead of bypassing floors through an integer dtype.
+Recognized positions, masks, block anchors, row indices, and counts remain exempt
+from the numerical float requirement. Stored-input and host-frame precision
+exceptions remain unchanged.
+
 The numeric selfcheck must remain finite, nonnegative, and at most `1e-12`.
 The stored selfcheck limit must equal `1e-12`.
 These checks do not change the plan's tolerance formulas.
