@@ -79,3 +79,82 @@ updated and others unchanged, or leave an older summary. Abrupt process terminat
 can leave sibling temporary files. The code does not fsync the parent directory, so
 power-loss durability of the rename depends on the filesystem. Repeat the command
 after resolving the failure; no partially written destination file is published.
+
+## Prescribed math probe
+
+`scripts/probe_math.py` compares torch CPU operations at one thread against real
+libm float functions loaded through `ctypes.util.find_library('m')`. Missing
+libraries or symbols cause an error; there is no Python or NumPy math fallback.
+Every C argument and result uses `c_float`. The probe needs no model or baseline.
+
+```bash
+$VENV/bin/python scripts/probe_math.py --n 1000 --out "$TIMESTRAL_WORK/probe-small.json"
+# Full measurement, after independent review:
+$VENV/bin/python scripts/probe_math.py --n 1000000 --out "$TIMESTRAL_WORK/probe.json"
+```
+
+`--n` accepts integers from 8 through 10,000,000, inclusive, with a default of
+1,000,000 per function. These limits retain endpoints and prevent accidental
+unbounded allocation. The output directory must exist. The shared atomic JSON
+helper preserves an existing report if serialization or replacement fails.
+
+### Sampling and comparison contract
+
+Each function starts a NumPy `PCG64` generator with seed `20261020`.
+The probe constructs one float32 input array and feeds its exact values to both
+backends. There are no additional special inputs in the measured ranges.
+
+- `asinh`: `k = n // 2` signed logarithmic samples followed by `n - k` uniform
+  samples in `[-10, 10)`. The negative logarithmic count is `k // 2`; the positive
+  count is `k - k // 2`. Each sign uses `geomspace(1e-30, 1e7, count)`, including
+  both magnitude endpoints. Negative samples precede positive samples.
+  Before the float32 cast, the first three uniform samples become `-10`, `0`, and `10`.
+- `sinh`: uniform samples in `[-80, 80)`.
+- `sin` and `cos`: uniform samples in `[-1100, 1100)`.
+- `softplus`: uniform samples in `[-100, 30)`.
+
+For the last four functions, the probe casts uniform samples to float32, then
+replaces the first three with the lower endpoint, zero, and upper endpoint.
+Endpoint replacement does not increase the sample count. Float32 rounding can
+produce the upper endpoint from a uniform draw.
+
+Torch softplus uses its default `beta=1` and `threshold=20`: it returns `x` when
+`x > 20`, otherwise its softplus implementation. Libm uses literal
+`log1pf(expf(x))`, with float32 rounding after each C call. The probe does not
+replace this formula with the torch threshold shortcut. Formula and implementation
+differences both contribute to the measured histogram.
+
+Finite ULP distance uses ordered float32 bits with both zeros at one position.
+Negative numbers, subnormals, and distances across zero retain their numerical
+order. `finite_histogram` contains only pairs with two finite outputs.
+`special_counts` partitions all other pairs into matching NaNs, same-sign
+infinities, and nonfinite mismatches. Histogram counts plus special counts equal
+`total_count`, which equals `n`. Matching NaNs are an explicit reporting convention,
+not evidence of finite numerical parity. `mismatch_count` includes positive finite
+ULP distances and nonfinite mismatches.
+
+`max_finite_ulp` excludes nonfinite pairs and is null when no finite pairs exist.
+The report includes the first maximum example and the first eight mismatches.
+Examples contain the index, input, both outputs, and their hexadecimal float32
+bits. Nonfinite values use strings so the JSON remains strict. Environment fields
+record Python, NumPy, torch, the CPU architecture and torch capability, and libc.
+Reports omit host names, local paths, and timings; repeated runs in the same
+environment produce identical reports.
+
+### Small-sample smoke measurement
+
+The 1,000-input CLI smoke run used Python 3.12.15, NumPy 2.5.4,
+torch 2.14.1+cpu, x86_64 with AVX2, glibc 2.43, and one torch thread.
+All special counts were zero; each histogram contains exactly 1,000 pairs.
+
+| Function | Finite ULP histogram (distance: count) | Maximum |
+|---|---|---|
+| asinh | 0: 1000 | 0 |
+| sinh | 0: 1000 | 0 |
+| sin | 0: 951, 1: 49 | 1 |
+| cos | 0: 948, 1: 52 | 1 |
+| softplus | 0: 865, 1: 135 | 1 |
+
+This smoke run is not the prescribed million-input acceptance measurement.
+The full run awaits independent review. Even an all-zero sampled histogram does
+not prove universal ULP(0). No probe result changes a gate tolerance automatically.
