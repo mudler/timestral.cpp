@@ -459,7 +459,7 @@ def register_hooks(model: TimestralModel):
                 return
             P(f"layer.{li}.out", out)
             if REC.stats and REC.allow is None:
-                _layer_rho(li, layer)
+                _layer_rho(li, m)
         hs.append(layer.register_forward_hook(layer_post))
 
         for j, (norm, attn) in enumerate(zip(layer.attn_norms, layer.attns)):
@@ -536,7 +536,7 @@ def register_hooks(model: TimestralModel):
         def mlp_post(m, i, o, li=li, mlp_kap=mlp_kap):
             if REC.want_layer(li):
                 P(f"layer.{li}.mlp", o)
-                if mlp_kap:
+                if REC.stats and REC.allow is None and mlp_kap:
                     REC.put_stat(f"layer.{li}.mlp", "kappa", max(mlp_kap.values()))
             mlp_kap.clear()
         hs.append(layer.mlp.register_forward_hook(mlp_post))
