@@ -11,7 +11,7 @@
 #include <limits>
 #include <stdexcept>
 using namespace ts;
-void require(bool ok, const std::string& s) { if (!ok) throw std::runtime_error(s); }
+#include "fixture.hpp"
 void units(const Config& source) {
     Config c = source; c.patch_size = 2; c.minimum_scale = 0.00001; c.use_asinh = true;
     std::vector<float> x{0,-0.0f,0,0, 5,5,5,5, 0,1,0,1, -2,0,2,4};
@@ -54,46 +54,6 @@ void units(const Config& source) {
     require(rejected,"unsupported stabilization must not silently run");
 }
 
-// One open per fixture: large real baselines must not be reloaded per tensor.
-struct Fixture {
-    tstest::Baseline b;
-    explicit Fixture(const std::string& path) { require(b.open(path,true),path); }
-    ggml_tensor* tensor(const std::string& n) { auto t=ggml_get_tensor(b.ctx,n.c_str()); require(t!=nullptr,"missing "+n); return t; }
-    template<class T> std::vector<T> get(const std::string& n, ggml_type ty) {
-        auto t=tensor(n); require(t->type==ty,"wrong type "+n);
-        auto p=static_cast<const T*>(t->data); return {p,p+ggml_nelements(t)};
-    }
-    std::vector<float> f(const std::string& n) { return get<float>(n,GGML_TYPE_F32); }
-    std::vector<int8_t> mask(const std::string& n) { return get<int8_t>(n,GGML_TYPE_I8); }
-};
-struct Case {
-    std::string name;
-    int64_t horizon;
-    bool cov, known;
-};
-std::vector<Case> manifest(bool real) {
-    std::ifstream in(std::string(TS_SOURCE_DIR)+"/tests/cases.json");
-    require(bool(in),"cannot open cases.json");
-    std::ostringstream text; text << in.rdbuf();
-    auto source=text.str();
-    auto doc=jsonmin::Parser(source).object();
-    std::vector<Case> result;
-    for(const auto& value:doc.at("cases").arr) {
-        const auto& o=value.obj;
-        if(!real && !o.at("tiny").b) continue;
-        auto count=[&](const char* group,const char* field) -> int64_t {
-            auto it=o.find(group); if(it==o.end()) return 0;
-            auto f=it->second.obj.find(field);
-            return f==it->second.obj.end()?0:f->second.integer();
-        };
-        bool known=count("known","numeric") || count("known","indicator") || count("cat_known","rows");
-        bool cov=known || count("past","numeric") || count("cat_past","rows");
-        auto h=o.at("H").integer();
-        result.push_back({o.at("name").text,real?h:std::max<int64_t>(1,h/4),cov,known});
-    }
-    require(!result.empty(),"empty manifest");
-    return result;
-}
 void check_fixture(const std::string& path,const Config& c, const Case& spec, size_t& blocks) {
     require(tstest::host_gates_or_skip(path),"HOST_SKIP");
     Fixture f(path);

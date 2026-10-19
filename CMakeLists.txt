@@ -45,7 +45,10 @@ set(TIMESTRAL_SRC
     src/common.cpp
     src/backend.cpp
     src/model_loader.cpp
-    src/scaler.cpp)
+    src/scaler.cpp
+    src/layers.cpp
+    src/encoder.cpp
+    src/rope.cpp)
 
 # PyTorch materializes multiply/add separately at the scaler float32 boundaries.
 

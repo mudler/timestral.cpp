@@ -19,3 +19,14 @@ ts_add_test(test_scaler)
 add_test(NAME test_scaler_units COMMAND test_scaler --unit)
 add_test(NAME test_scaler_209m COMMAND test_scaler --real)
 set_tests_properties(test_scaler_209m PROPERTIES SKIP_RETURN_CODE 77)
+
+ts_add_test(test_patch_embed)
+ts_add_test(test_rope)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+  target_compile_options(test_rope PRIVATE -ffp-contract=off)
+endif()
+add_test(NAME test_patch_embed_units COMMAND test_patch_embed --unit)
+add_test(NAME test_rope_units COMMAND test_rope --unit)
+# Real component parity is opt-in while reference artifacts are generated.
+# Invoke the executables with --real and TIMESTRAL_TEST_REAL_CASES=all or a
+# comma-separated explicit subset; subset output cannot claim full acceptance.

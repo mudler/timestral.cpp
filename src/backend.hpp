@@ -33,3 +33,31 @@ ggml_backend_t backend_init_cpu();
 ggml_backend_buffer_t backend_buffer_from_mapping(MappedFile& file);
 
 } // namespace ts
+
+#include "ggml.h"
+#include "ggml-alloc.h"
+#include <vector>
+namespace ts {
+// Owns metadata per invocation and a persistent backend allocator across shapes.
+// Not reentrant. Graph tensors are invalidated by begin(); read() returns owned data.
+class GraphRunner {
+public:
+    explicit GraphRunner(size_t capacity = 4096);
+    ~GraphRunner();
+    GraphRunner(const GraphRunner&) = delete;
+    GraphRunner& operator=(const GraphRunner&) = delete;
+    ggml_context* begin();
+    void allocate(const std::vector<ggml_tensor*>& outputs);
+    void upload(ggml_tensor* t, const std::vector<float>& values);
+    void compute();
+    std::vector<float> read(ggml_tensor* t) const;
+private:
+    size_t capacity_;
+    bool allocated_ = false;
+    bool computed_ = false;
+    ggml_backend_t backend_ = nullptr;
+    ggml_gallocr_t allocator_ = nullptr;
+    ggml_context* ctx_ = nullptr;
+    ggml_cgraph* graph_ = nullptr;
+};
+}

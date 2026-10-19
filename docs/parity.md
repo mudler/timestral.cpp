@@ -291,3 +291,103 @@ After this coverage fix, all six negative scenarios pass, alongside the units,
 regressions. None skip. Production arithmetic and tolerances remain unchanged.
 The full real suite remains pending; this review does not test files while the
 reference generator is writing them.
+
+## M2a native graphs: measured component acceptance
+
+The embedding-only encoder and stored-table RoPE now execute native CPU ggml
+graphs. No Python runs during inference. `GraphRunner` retains its gallocr and
+backend across calls, rebuilds graph metadata per invocation, uploads owned inputs
+only after allocation, and copies outputs before graph destruction. The loaded
+model must outlive its encoder/RoPE objects; these objects are not reentrant.
+Weights remain F32 in the read-only model mapping. The default metadata capacity
+is 4096 nodes (not a model dimension).
+
+Patch input order is all values, then all missing flags, per patch. The graph
+computes hidden affine, SiLU, output affine, and residual affine plus addition.
+A CPU custom affine graph node uses a double accumulator with F32 weights,
+activations, bias, and output. This is deliberate: the initial native F32
+`ggml_mul_mat` path failed a tiny patch output at error `1.209e-6` versus the
+unchanged measured tolerance `1.205e-6`. Replacing only SiLU with libm did not
+change that failure. Widening the affine accumulation passes without changing
+floors or tolerance formulas. This scalar parity kernel prioritizes accuracy,
+not throughput; GPU support and GEMM optimization are not claimed here.
+
+RoPE gathers stored rows using checked integer positions, including valid negative
+positions. Extreme and out-of-table positions fail before index arithmetic can
+overflow. Rotation pairs features `i` and `i + head_dim/2`, not adjacent features
+or `i + rope_dim/2`. It uses graph view/neg/concat/mul/add with dumped tables as
+teacher-forced inputs. Partial-frequency padding leaves the unrotated tail intact.
+The stored inverse frequencies are exposed without recomputation.
+
+Gate labels in the original D.3 table differ from the M2a review numbering:
+this measurement covers inverse frequencies, EXACT row gathering, ULP(2) rotation
+on dumped inputs, and teacher-forced NORM patch hidden/output. It does not revise
+the original ULP(0) prediction: **all measured rotations actually achieve ULP(0)**.
+NORM still uses `max(2 * floor_tf, 16u)`, with missing floor metadata a hard error.
+Caps remain warning-only. EXACT treats signed zeros as equal and reports their
+differences separately.
+
+Measured on the completed acceptance suite:
+
+- All **28 tiny cases** (14 each for tiny and tiny-bias), **64 pass/block
+  boundaries** per component, including positive/negative passes and the first
+  and terminal dumped blocks. Patch: 128 NORM comparisons and 64 EXACT feature
+  boundaries. Maximum patch normalized error: `1.137e-6`; maximum error/tolerance
+  ratio: `0.777`. RoPE: **384 q/k rotations**, all ULP(0); every gathered table
+  compares EXACT, with **zero signed-zero differences**.
+- Real **partial subset only**: `uni_one_patch,multi,past_cov`, six pass/block
+  boundaries, 12 patch NORM comparisons, six EXACT feature boundaries and
+  **128 q/k rotations**. Maximum patch normalized error: `1.035e-5`; maximum
+  error/tolerance ratio: `0.622`. Rotations are ULP(0), gathered rows EXACT,
+  zero signed-zero differences. Floors were computed with the existing script
+  on scratch copies of all five already-complete modes for these three cases.
+  Original reference files were not modified. The original real f32 files did
+  not yet contain teacher-forced floors; that run correctly failed rather than
+  substituting a tolerance. No incomplete `ctx_cap` or `bench_32k` input was read.
+- Native regressions: nine CTest entries pass together, then the tiny model
+  loader passes separately (ten total), with zero skips. The split is necessary
+  because the loader uses `TIMESTRAL_TEST_TINY` for model files while component
+  tests use it for baseline directories. The first combined invocation failed
+  that loader because it received the baseline root; rerunning with the model
+  fixture root passed. Scaler still covers all 28 cases / 64 boundaries; both
+  existing scaler coverage-negative tests pass. Full real scaler and full real
+  M2a acceptance remain pending, not counted as passes or skips.
+
+Unit tests additionally reject incomplete/zero patch shapes, nonboolean masks,
+invalid feature layouts and bias dimensions, extreme/out-of-range positions,
+invalid RoPE table layouts, invalid graph capacity, upload size/state mistakes,
+and reads before compute. Repeated same shapes, growth/shrink, owned outputs,
+valid negative positions, empty table gathers, and paired-half/tail semantics pass.
+Coverage follows `cases.json`, not discovered tensor names: absent selected files,
+missing required tensors/floors, and disagreement with expected layer schedules
+fail. Real subsets require an explicit case list; an unset list means all cases.
+
+Reproduction (all commands must propagate nonzero status):
+
+```sh
+set -eu
+cmake -S . -B "$BUILD" -DTIMESTRAL_BUILD_TESTS=ON
+cmake --build "$BUILD" -j2
+export TIMESTRAL_TEST_TINY="$SUITE"
+export TIMESTRAL_TEST_GGUF="$REAL_MODEL"
+ctest --test-dir "$BUILD" -E '^(test_scaler_209m|test_model_loader)$' -V
+TIMESTRAL_TEST_TINY="$PWD/tests/fixtures/tiny" \
+  ctest --test-dir "$BUILD" -R '^test_model_loader$' -V
+python3 tests/test_scaler_coverage.py \
+  "$BUILD/tests/test_scaler" "$SUITE" "$TIMESTRAL_WORK"
+# REAL_FLOORS contains scratch copies with measured floors, under real/.
+export TIMESTRAL_TEST_REAL_BASELINES="$REAL_FLOORS"
+export TIMESTRAL_TEST_REAL_CASES=uni_one_patch,multi,past_cov
+"$BUILD/tests/test_patch_embed" --real
+"$BUILD/tests/test_rope" --real
+```
+
+This completes the native M2a implementation and tiny gates, with real subset
+coverage only. It is not a full-real milestone acceptance or end-to-end forecaster.
+
+Four additional scratch-copy coverage-negative checks passed: each component
+rejects a missing selected `ctx_cap` file; patch rejects removed floor metadata;
+RoPE rejects a removed required q-rotation tensor. An initial assertion expected
+"missing tensor" after replacing every occurrence of a patch name, but this also
+removed its floor key. The gate correctly failed earlier at "missing metadata";
+the negative-check assertion was corrected, not the production gate.

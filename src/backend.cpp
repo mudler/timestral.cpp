@@ -73,3 +73,47 @@ ggml_backend_buffer_t backend_buffer_from_mapping(MappedFile& file) {
 }
 
 } // namespace ts
+
+namespace ts {
+GraphRunner::GraphRunner(size_t capacity) : capacity_(capacity) {
+    if (capacity < 16 || capacity > 1000000) throw Error("invalid graph capacity");
+    backend_ = backend_init_cpu();
+    ggml_backend_cpu_set_n_threads(backend_, 1);
+    allocator_ = ggml_gallocr_new(ggml_backend_get_default_buffer_type(backend_));
+    if (!allocator_) { ggml_backend_free(backend_); throw Error("cannot create graph allocator"); }
+}
+GraphRunner::~GraphRunner() {
+    if (ctx_) ggml_free(ctx_);
+    ggml_gallocr_free(allocator_);
+    ggml_backend_free(backend_);
+}
+ggml_context* GraphRunner::begin() {
+    if (ctx_) ggml_free(ctx_);
+    ctx_ = nullptr; graph_ = nullptr; allocated_ = false; computed_ = false;
+    ggml_init_params p{capacity_*ggml_tensor_overhead()+ggml_graph_overhead_custom(capacity_,false), nullptr, true};
+    ctx_ = ggml_init(p);
+    if (!ctx_) throw Error("cannot allocate graph metadata");
+    graph_ = ggml_new_graph_custom(ctx_, capacity_, false);
+    return ctx_;
+}
+void GraphRunner::allocate(const std::vector<ggml_tensor*>& outputs) {
+    if (!graph_ || allocated_ || outputs.empty()) throw Error("graph has no outputs");
+    for (auto* t : outputs) { if (!t) throw Error("null graph output"); ggml_set_output(t); ggml_build_forward_expand(graph_,t); }
+    if (!ggml_gallocr_alloc_graph(allocator_, graph_)) throw Error("cannot allocate graph buffers");
+    allocated_ = true;
+}
+void GraphRunner::upload(ggml_tensor* t, const std::vector<float>& values) {
+    if (!allocated_ || !t || !(t->flags & GGML_TENSOR_FLAG_INPUT) || t->type != GGML_TYPE_F32 || ggml_nbytes(t) != values.size()*sizeof(float)) throw Error("graph input size/type mismatch");
+    computed_ = false;
+    ggml_backend_tensor_set(t, values.data(), 0, ggml_nbytes(t));
+}
+void GraphRunner::compute() {
+    if (!allocated_ || !graph_ || ggml_backend_graph_compute(backend_, graph_) != GGML_STATUS_SUCCESS) throw Error("graph compute failed");
+    computed_ = true;
+}
+std::vector<float> GraphRunner::read(ggml_tensor* t) const {
+    if (!computed_ || !t || t->type != GGML_TYPE_F32 || !ggml_is_contiguous(t)) throw Error("invalid graph read");
+    std::vector<float> result(ggml_nelements(t));
+    ggml_backend_tensor_get(t, result.data(), 0, ggml_nbytes(t)); return result;
+}
+}
