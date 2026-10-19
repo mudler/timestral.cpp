@@ -36,6 +36,7 @@ AssembledRows assemble_rows(const Config& c,const std::vector<float>& context,co
  for(auto v:user)if(v!=0&&v!=1)throw Error("observation mask must be boolean");
  if((P||K||CP||CK)&&!c.covariate_enabled)throw Error("this checkpoint was not trained with covariates");
  if((K||CK)&&!supports_known_covariates(c))throw Error("this checkpoint cannot condition on known-future covariates");
+ if(!std::isfinite(c.target_encoding_smooth)||c.target_encoding_smooth<=0)throw Error("target_encoding.smooth must be finite and positive");
  codes_valid(cp);codes_valid(ck);
  cap=cap?cap:c.context_length;if(cap>c.context_length)throw Error("max_context exceeds stored position range");
  size_t kept=std::min(T,cap),ps=c.patch_size,pad=(ps-kept%ps)%ps,len=add(kept,pad),hor=mul(add(H,ps-1)/ps,ps);
@@ -51,7 +52,7 @@ AssembledRows assemble_rows(const Config& c,const std::vector<float>& context,co
    std::vector<double> target(T);bool started=false;
    for(size_t t=0;t<T;++t){started|=obs[b*T+t];target[t]=started&&t>=T-kept?double(filled[b*T+t]):NAN;}
    std::vector<double> p(codes.begin()+off,codes.begin()+off+T),f(codes.begin()+off+T,codes.begin()+off+width);
-   auto e=target_encode(target,p,f);
+   auto e=target_encode(target,p,f,c.target_encoding_smooth);
    for(size_t t=0;t<T;++t)out[off+t]=std::isnan(target[t])&&std::isnan(p[t])?NAN:e.past[t];
    std::copy(e.future.begin(),e.future.end(),out.begin()+off+T);
   }return out;

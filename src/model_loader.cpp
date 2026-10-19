@@ -121,6 +121,9 @@ Config read_config(const gguf_context* g) {
     c.clip_nonnegative = kv.boolean("timestral.forecaster.clip_nonnegative");
     c.target_encoding_smooth = kv.f64("timestral.target_encoding.smooth");
 
+    if (!std::isfinite(c.target_encoding_smooth) || c.target_encoding_smooth <= 0)
+        fail("target_encoding.smooth must be finite and positive");
+
     // The checks of TimestralConfig.__post_init__, plus the schema's own rules.
     if (!c.qkv_head_major) fail("qkv_head_major is false: the file has torch row order, which this loader does not read");
     if (c.stabilize_with_global) fail("stabilize_with_global=true is not supported");

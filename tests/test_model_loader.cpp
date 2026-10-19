@@ -12,6 +12,7 @@
 #include "json_min.hpp"
 #include "model_loader.hpp"
 #include <cstdlib>
+#include <cmath>
 #include <cstring>
 #include <fstream>
 #include <functional>
@@ -265,6 +266,10 @@ static void negative_tests(const std::string& src, const std::string& tag) {
     variant(src, "knots as float32", [](Mut& m) { gguf_remove_key(m.g, "timestral.quantile_knots"); float v[3] = {0.1f, 0.5f, 0.9f}; gguf_set_arr_data(m.g, "timestral.quantile_knots", GGUF_TYPE_FLOAT32, v, 3); }, false, "not an array of float64");
     variant(src, "schedule as u32 array", [](Mut& m) { gguf_remove_key(m.g, "timestral.block_schedule"); uint32_t v[4] = {0, 1, 2, 3}; gguf_set_arr_data(m.g, "timestral.block_schedule", GGUF_TYPE_UINT32, v, 4); }, false, "not an array of strings");
     variant(src, "rope_theta as float32", [](Mut& m) { gguf_remove_key(m.g, "timestral.rope.freq_base"); gguf_set_val_f32(m.g, "timestral.rope.freq_base", 10000.f); }, false, "has type");
+
+    variant(src, "nondefault smoothing", [](Mut& m) { gguf_set_val_f64(m.g, "timestral.target_encoding.smooth", 3.); }, true);
+    for(double smooth:{0.,-1.,double(NAN),double(INFINITY)})
+        variant(src, "invalid smoothing", [smooth](Mut& m) { gguf_set_val_f64(m.g, "timestral.target_encoding.smooth", smooth); }, false, "target_encoding.smooth");
 
     // inconsistent KV
     variant(src, "architecture", [](Mut& m) { gguf_set_val_str(m.g, "general.architecture", "llama"); }, false, "expected 'timestral'");

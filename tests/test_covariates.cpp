@@ -11,7 +11,12 @@ void units(){
  auto e=target_encode({2,4,NAN},{16777216.,16777217.,NAN},{16777216.,16777217.,99,NAN});
  require(e.past==std::vector<float>({2.5f,3.5f,3})&&e.future==std::vector<float>({2.5f,3.5f,3,3}),"f64 codes/unseen/nan");
  require(numpy_sum(std::vector<double>{1e16,1,-1e16,1,1,1,1,1})==4,"numpy eight lanes");
- Config c{};c.patch_size=2;c.context_length=4;c.covariate_enabled=true;c.block_schedule={LayerKind::Time,LayerKind::TimeVariate};
+ Config c{};c.target_encoding_smooth=1;c.patch_size=2;c.context_length=4;c.covariate_enabled=true;c.block_schedule={LayerKind::Time,LayerKind::TimeVariate};
+ c.target_encoding_smooth=3;
+ auto weighted=assemble_rows(c,{2,4},{1,1},1,1,2,1,{},0,{},0,0,{10,20},1);
+ require(weighted.rows==std::vector<float>({2,4,2.75f,3.25f}),"metadata smoothing reaches categorical assembly");
+ for(double invalid:{0.,-1.,double(NAN),double(INFINITY)}){c.target_encoding_smooth=invalid;rejects([&]{assemble_rows(c,{2,4},{1,1},1,1,2,1,{},0,{},0,0,{10,20},1);});rejects([&]{target_encode({2,4},{10,20},{},invalid);});}
+ c.target_encoding_smooth=1;
  auto a=assemble_rows(c,{NAN,2,NAN,4,5},{1,1,1,1,1},1,1,5,3,{1,NAN,3,INFINITY,5},1,{0,1,2,3,4,5,6,NAN},1);
  require(a.rows==std::vector<float>({2,2,4,5,0,3,std::numeric_limits<float>::max(),5,1,2,3,4}),"cap after ffill and finite saturation");
  require(a.roles==std::vector<int64_t>({0,1,2})&&a.groups==std::vector<int64_t>({0,0,0}),"roles/groups");

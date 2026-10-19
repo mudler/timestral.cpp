@@ -831,3 +831,21 @@ layers, and 294 comparisons (maximum ratio 0.670333). Its repeated error
 amplification report remains visible (one report, maximum adjacent 4.24367),
 not suppressed. Composite/time extensions pass 92/56 comparisons. All 215
 canonical suite GGUF checksums remain unchanged.
+
+M5 review correction: categorical assembly passes the GGUF
+`timestral.target_encoding.smooth` value rather than the standalone helper's
+default. The loader and assembly require finite positive weights. The
+reference documents this parameter as a smoothing weight; its unchecked
+formula at zero gives 0/0 for empty categories, and negative weights can
+produce zero denominators. These invalid settings are refused explicitly,
+not assigned fallback values. A nondefault weight of 3 is tested through
+assembly; zero, negative, NaN and infinite weights are rejected through both
+assembly and GGUF admission.
+
+The earlier scratch `predict-final-binary.sha256` is stale intermediate
+evidence, not a checksum of the final tested executable. No archive of the
+earlier full-real executable exists, so its source/binary identity cannot be
+proved retrospectively. The earlier full-real evidence is superseded by a
+new full-real replay built from a committed review-fix snapshot, with archived
+source, executable and before/after checksums. No baseline or metric changes
+are involved in this correction.
