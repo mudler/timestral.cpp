@@ -27,6 +27,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+from rerun_contracts import expected_reruns, source_name
 import baseline_io as bio  # noqa: E402
 
 LAYER_KIND_AXES = {"time": (True,), "variate": (False,), "time_variate": (True, False), "variate_time": (False, True)}
@@ -179,11 +180,7 @@ def scaled_case(case, tiny):
 
 
 def rerun_names(names):
-    """Outputs of the standalone components in C.3, not arbitrary source subsets."""
-    block = re.compile(r'^(pos|neg)\.b\d+\.(scaled|loc|scale|known\.(loc|scale|is_binary|scaled)|'
-                       r'patch\.(hidden_out|out)|layer\.\d+\.(out|mlp_norm|mlp|attn\.\d+\..+)|'
-                       r'out_norm|head\.(raw|monotone)|predict|refined|frames\.(loc|scale|in\.sinh_median))$')
-    return {n for n in names if block.match(n) or re.match(r'^(pos|neg)\.cap\.(out|scale)$', n)}
+    return set(expected_reruns(names))
 
 
 def finite_nonnegative(value):
@@ -436,10 +433,12 @@ def _check_case(directory, case, tiny):
         need = rerun_names(exp)
         if set(t3) != need:
             bad(f'{name}: {m} component coverage differs: missing {sorted(need-set(t3))[:4]}, extra {sorted(set(t3)-need)[:4]}')
-        for n in set(t3) & set(t):
-            if t3[n].shape != t[n].shape:
+        for n in set(t3) & need:
+            if source_name(n) not in t:
+                continue  # Missing gold coverage is already reported above.
+            if t3[n].shape != t[source_name(n)].shape:
                 bad(f'{name}: {m} shape mismatch for {n}')
-        extra = sorted(set(t3) - set(t))
+        extra = sorted(n for n in t3 if source_name(n) not in t)
         if extra:
             bad(f"{name}: {m} has records not in the f32 file: {extra[:4]}")
         if not t3:

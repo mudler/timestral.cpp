@@ -60,7 +60,7 @@ def fixture():
         if m.startswith('f64'):
             tt = {n: a.astype(np.float64) if cb.bio.is_float(a) and not n.startswith('input.') else a for n, a in tt.items()}
         if m.endswith('rerun'):
-            tt = {n: a for n, a in tt.items() if n in cb.rerun_names(set(t))}
+            tt = {n: tt[target].copy() for n, target in cb.expected_reruns(t).items()}
             kk.update({'rerun.source': 'f32', 'selfcheck.ok': True,
                        'selfcheck.max_ratio': 0., 'selfcheck.limit': 1e-12, 'selfcheck.where': ''})
         out[m] = tt, kk
@@ -216,6 +216,14 @@ class AcceptanceTests(unittest.TestCase):
     def test_component_statistic(self):
         data = fixture(); del data['f32'][1]['stat.pos.b1.layer.0.attn.0.q.kappa']
         self.assertTrue(self.run_fixture(data))
+
+    def test_combined_refine_contract_required_and_shape_checked(self):
+        data = fixture()
+        del data['f64-rerun'][0]['pos.b0.block_refined']
+        self.assertTrue(any('component coverage' in e for e in self.run_fixture(data)))
+        data = fixture()
+        data['f64-rerun'][0]['pos.b0.block_refined'] = np.ones((2,), np.float64)
+        self.assertTrue(any('shape mismatch' in e for e in self.run_fixture(data)))
 
     def test_rerun_component(self):
         data = fixture(); del data['f64-rerun'][0]['pos.b1.layer.0.attn.0.q']

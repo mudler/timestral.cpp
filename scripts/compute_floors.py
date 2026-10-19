@@ -27,6 +27,7 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from rerun_contracts import floor_inputs
 import baseline_io as bio  # noqa: E402
 
 U = 2.0 ** -24
@@ -181,11 +182,13 @@ def process(directory, case):
     kv = {k: v for k, v in kv.items() if not (k.startswith("floor_fr.") or k.startswith("floor_tf.") or k.startswith("cap."))}
     caps = Caps(t, kv)
     out, rows, missing, warn = {}, [], [], []
+    # G6.2 uses combined predict+refine, never the isolated refine result.
+    tf_sources = [floor_inputs(x) for x in (r64, r32m) if x is not None]
     for name, a in t.items():
         if not bio.is_float(a):
             continue
         fr = floors(t, [x for x in (t64, t32m) if x is not None], name) if (t64 is not None or t32m is not None) else None
-        tf = floors(t, [x for x in (r64, r32m) if x is not None], name)
+        tf = floors(t, tf_sources, name)
         if fr is None:
             missing.append(name)
         else:

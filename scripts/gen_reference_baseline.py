@@ -58,6 +58,7 @@ from timestral.model import TimestralModel, monotone_quantiles
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import baseline_io as bio  # noqa: E402
+from rerun_contracts import expected_reruns
 
 MODES = ["f32", "f32-math", "f64", "f64-rerun", "f32-math-rerun"]
 CODE_SHA = "a534bdbd244d64f3d9d743f46c7bf6fc330ed4ff"
@@ -771,17 +772,12 @@ def run_forecast(fc: TimestralForecaster, case: dict, inputs: dict, layers, stat
                   ("cat_past", "input.cat_past"), ("cat_known", "input.cat_known")):
         if k in inputs:
             REC.put(nm, inputs[k], absolute=True)
-    try:
-        res = fc.forecast(inputs["context"], case["H"],
+    # Unsupported reference refusals and instrumentation errors propagate.
+    res = fc.forecast(inputs["context"], case["H"],
                           past_covariates=inputs.get("past"), known_covariates=inputs.get("known"),
                           categorical_past_covariates=inputs.get("cat_past"),
                           categorical_known_covariates=inputs.get("cat_known"))
-        REC.put("final.quantiles", res.quantiles, absolute=True)
-    except Exception as e:   # the reference may refuse a case; the baseline records how
-        REC.kv["expect.error.type"] = type(e).__name__
-        REC.kv["expect.error.message"] = str(e)
-        REC.kv["expect.error.step"] = CTX.last_call
-        CTX.pass_name = None
+    REC.put("final.quantiles", res.quantiles, absolute=True)
     return REC
 
 
@@ -882,6 +878,16 @@ class Harness:
         return torch.from_numpy(a)
 
     def run(self, src: dict) -> dict:
+        try:
+            return self._run(src)
+        finally:
+            CTX.rerun = False
+            CTX.in_refine = False
+            CTX.attn = None
+            CTX.sdpa_buf = []
+            CTX.pass_name, CTX.block = None, None
+
+    def _run(self, src: dict) -> dict:
         global REC
         REC = Rec(stats=False)
         CTX.rerun = True
@@ -934,9 +940,7 @@ class Harness:
                         with only([base + "norm"]):
                             layer.attn_norms[j](nrm_in)
                         if (pre + base + "norm") in src:
-                            xin = T(base + "norm")
-                            with only(pred=lambda n, b=base: n.startswith(b) and n != b + "norm"):
-                                layer.attns[j](xin, tmask_obj if is_time else vmask, cos, sin)
+                            self.attention(layer.attns[j], T, base, tmask_obj if is_time else vmask)
                         if (pre + base + "out") in src:
                             resid = resid + src[pre + base + "out"]
                     with only([f"layer.{l}.mlp_norm"]):
@@ -960,9 +964,13 @@ class Harness:
                         pred = m.predict_block(T("args.inputs"), T("args.observed"), T("args.group_ids"),
                                                int(src[pre + "args.horizon_patches"][0]), T("args.role_ids"),
                                                T("args.known_future"), T("args.known_future_mask"))
-                    q_in = T("predict")
+                    # Combined block contract carries local prediction error into refine.
+                    with only([]):
+                        combined = self.fc._refine_block(pred, T("refine.context"), T("refine.mask"), T("refine.target_rows"))
+                    REC.put("block_refined", combined)
+                    # Isolated refine and frames have their own dumped prediction input.
                     with only(["refined", "frames.loc", "frames.scale", "frames.in.sinh_median"]):
-                        self.fc._refine_block(q_in, T("refine.context"), T("refine.mask"), T("refine.target_rows"))
+                        self.fc._refine_block(T("predict"), T("refine.context"), T("refine.mask"), T("refine.target_rows"))
             # pass-level: the cap
             for p in ("pos", "neg"):
                 if f"{p}.cap.in" in src:
@@ -975,6 +983,57 @@ class Harness:
         CTX.pass_name, CTX.block = None, None
         return REC.t
 
+    def attention(self, attn, T, base, mask):
+        """Local rounding boundaries: never consume an upstream rerun result."""
+        get = lambda n: T(base + n)
+        put = lambda n, v: REC.put(base + n, v)
+        x = get("norm")
+        inputs = x if attn.is_time else x.permute(1, 0, 2)
+        # Projection and q/k/v split share the dumped norm input.
+        with only([]):
+            fused = attn.wQKV(inputs.contiguous())
+        put("qkv", fused)
+        batch, seq, _ = inputs.shape
+        qkv = fused.reshape(batch, seq, 3, attn.head_dim, attn.num_heads)
+        for name, value in zip("qkv", qkv.permute(2, 0, 1, 4, 3).unbind(0)):
+            put(name, value.contiguous())
+        if attn.is_time:
+            with only([]):
+                qr, kr = _layers._apply_rotary(get("q"), get("k"), get("cos"), get("sin"))
+            put("q_rope", qr)
+            put("k_rope", kr)
+            # Tables are a separate position-gather contract, not inputs to this rotary rerun.
+            with only([]):
+                cos, sin = self.model.transformer.rope(x, T("tf.positions"))
+            put("cos", cos)
+            put("sin", sin)
+        q, k, v = get("q_rope" if attn.is_time else "q"), get("k_rope" if attn.is_time else "k"), get("v")
+        with only([]):
+            if isinstance(mask, TwoStreamMask):
+                n = mask.enc_len
+                enc = _layers._sdpa(q[:, :n], k[:, :n], v[:, :n], mask.mask[:, :, :n, :n])
+                dec = _layers._sdpa(q[:, n:], k, v, mask.mask[:, :, n:, :])
+                sdpa = torch.cat([enc, dec], dim=1)
+            else:
+                sdpa = _layers._sdpa(q, k, v, mask, is_causal=attn.is_time and mask is None)
+        put("sdpa", sdpa)
+        if attn._gate is not None:
+            with only([]):
+                gate = attn._gate(inputs)
+            put("gate", gate)
+        gated = get("sdpa")
+        if attn._gate is not None:
+            gated = gated * get("gate").sigmoid()
+        rows, patches, _ = x.shape
+        if attn.is_time:
+            gated = gated.reshape(rows, patches, attn.embed_dim)
+        else:
+            gated = gated.reshape(patches, rows, attn.embed_dim).permute(1, 0, 2)
+        put("gated", gated)
+        with only([]):
+            out = attn.wO(get("gated"))
+        put("out", out)
+
     def _monotone(self, raw):
         cfg = self.model.config
         preds = raw.reshape(raw.shape[0], raw.shape[1], cfg.patch_size, cfg.num_quantiles)
@@ -986,12 +1045,17 @@ class Harness:
 def selfcheck(out: dict, ref: dict) -> tuple[float, str]:
     """Largest |rerun - original| / rms over the components. The rerun is the same computation
     on the same inputs, so the ratio must be at most 1e-12."""
+    expected = expected_reruns(ref)
+    if set(out) != set(expected):
+        return float("inf"), f"coverage: missing {sorted(set(expected)-set(out))[:4]}, extra {sorted(set(out)-set(expected))[:4]}"
     worst, where = 0.0, ""
-    for k, a in out.items():
-        if k not in ref:
-            return float("inf"), f"{k}: not in the free-running file"
-        b = ref[k]
+    for k, target in expected.items():
+        a, b = out[k], ref[target]
+        if a.shape != b.shape or not np.isfinite(a).all() or not np.isfinite(b).all():
+            return float("inf"), f"{k}: invalid shape or nonfinite values"
         if not bio.is_float(a):
+            if not np.array_equal(a, b):
+                return float("inf"), f"{k}: nonfloat mismatch"
             continue
         d = bio.max_abs_diff(a, b)
         r = bio.rms(b)
@@ -1103,6 +1167,8 @@ def main() -> int:
             with math_ctx():
                 o1 = h.run(src)
                 o2 = h.run(src)
+            if set(o1) != set(expected_reruns(src)) or set(o2) != set(o1):
+                raise RuntimeError("rerun component coverage differs from source contracts")
             for k in o1:
                 if o1[k].tobytes() != o2[k].tobytes():
                     print(f"[{case['name']}] rerun NOT REPRODUCIBLE at {k}")

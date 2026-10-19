@@ -128,8 +128,10 @@ At the pinned reference commit `a534bdbd244d64f3d9d743f46c7bf6fc330ed4ff`,
 `scaler.py:compute_causal_statistics` clamps denominators and scales for missing or constant observations.
 No legitimate pre-block refusal for the canonical `const` or `all_missing` inputs is established by these paths.
 The degenerate-output `ValueError` in `_forecast_raw` follows `_block_ar_decode` and cannot justify pre-block omissions.
-The generator catches arbitrary exceptions and records the last wrapped call as `expect.error.step`;
+Older artifacts may record arbitrary caught exceptions and the last wrapped call as `expect.error.step`;
 that record alone cannot distinguish a reference refusal from an instrumentation failure.
+The generator now propagates every unsupported reference exception and instrumentation failure.
+It does not write an exception artifact; the checker continues to reject existing unproven exception artifacts.
 
 Exception validation still requires mandatory stored inputs with valid shapes, dtypes, and statistics in all three full modes.
 A claimed pre-block error requires zero recorded blocks and no rerun artifacts.
@@ -157,3 +159,76 @@ Run the fast synthetic regressions without inference:
 PYTHONDONTWRITEBYTECODE=1 $VENV/bin/python -m unittest discover \
     -s tests/python -p test_check_baseline.py -v
 ```
+
+## Teacher-forced rerun contracts (G2)
+
+These contracts apply to both rerun modes. Each local operation reads the specified
+source-file tensors, upcast to the rerun dtype. It must not read another local rerun's
+output. The ordinary gold forward and its attention implementation are unchanged.
+
+For each `layer.<l>.attn.<j>.` prefix:
+
+| Output | Exact input boundary |
+|---|---|
+| `norm` | Dumped layer residual plus preceding dumped attention outputs, summed in source dtype |
+| `qkv`, `q`, `k`, `v` | Projection on dumped `norm`; variate attention first permutes `(rows,N,D)` to `(N,rows,D)` |
+| `cos`, `sin` (time only) | RoPE table gather from dumped `tf.positions`; independent of rotary application |
+| `q_rope`, `k_rope` (time only) | Dumped `q`, `k`, `cos`, `sin`, not newly projected q/k or newly gathered tables |
+| `sdpa` | Dumped post-RoPE q/k for time, raw q/k for variate, dumped `v`, and the axis-specific dumped mask |
+| `gate` (when configured) | Gate linear projection on dumped `norm` in attention-axis layout; pre-sigmoid |
+| `gated` | Dumped axis-layout `sdpa` times sigmoid of dumped pre-sigmoid `gate`, or just dumped `sdpa` without a gate; restore physical row layout |
+| `out` | `wO` on dumped restored-layout `gated`, not the newly computed gated result |
+
+The fused projection reshapes `(batch,seq,3,head_dim,num_heads)`, then permutes
+`(2,0,1,4,3)` and splits, matching the pinned reference's interleaving.
+SDPA receives `(B,S,H,d)` and transposes sequence/heads in the reference helper.
+With `TwoStreamMask`, context queries and keys/values use `[:enc_len]` and the
+context mask quadrant; horizon queries use all keys/values and the horizon mask rows.
+The two results concatenate along sequence. Without a time mask, time attention is
+causal. Variate attention is not implicitly causal. Its `sdpa` and `gate` remain
+axis-layout tensors, whereas `gated` is always the physical-row-layout input of `wO`.
+
+Existing larger boundaries remain separate: a whole layer uses dumped `layer.in`,
+masks and positions; MLP norm uses the source-dtype reconstructed residual; MLP uses
+dumped `mlp_norm`; output norm uses dumped last-layer output; head projection uses
+dumped `head.in`; monotone conversion uses dumped `head.raw`. Patch embedding and
+scaler retain their existing local contracts.
+
+### Isolated refine versus combined block refine
+
+- `predict`: `predict_block` on dumped `args.*`.
+- `refined`: isolated `_refine_block` on dumped `predict`, `refine.context`,
+  `refine.mask`, and `refine.target_rows` (G6.1).
+- `frames.*`: isolated frame computation during that dumped-prediction refine.
+- **`block_refined`**: combined `predict_block` plus `_refine_block` (G6.2).
+  Refine receives the **newly computed prediction**, with dumped refine context,
+  mask and target rows. This name exists only in rerun files; its gold comparison
+  target is `refined`.
+
+`scripts/rerun_contracts.py` defines the shared output-to-gold mapping. The checker
+requires both refine contracts, validates the alias shape against gold `refined`,
+and rejects older ambiguous rerun artifacts missing `block_refined`.
+`compute_floors.py` selects `block_refined` when computing `floor_tf.<prefix>refined`,
+so the block floor includes prediction error. It fails rather than falling back to
+isolated refine when the combined contract is absent. Isolated `refined` remains
+available in rerun files for G6.1 consumers; no tolerance or unrelated floor formula
+changes accompany this selection repair.
+
+The numeric selfcheck derives its complete required set from source contracts,
+not returned outputs. Missing/extra outputs, shape mismatches, nonfinite values,
+and nonfloat mismatches fail. Both isolated and combined refinement compare to
+free-running f64 `refined`. The production limit remains **`1e-12 * rms`**.
+Rerun coverage errors and hook/harness exceptions abort generation, and rerun context
+is reset on exit even after failure. Source coverage itself still requires the
+independent case/configuration checks in `check_baseline.py`.
+
+Fast bounded regressions (including actual f64 truth-patched CPU math attention):
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 $VENV/bin/python -m unittest discover \
+    -s tests/python -p 'test_*.py' -v
+```
+
+The separate artifact-budget follow-up must reconcile C.4's size estimates with
+reported existing suite totals: about 11.5 GB real and 1.34 GB per tiny suite.
+This repair does not regenerate those suites or change their artifact budget.
