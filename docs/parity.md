@@ -708,3 +708,41 @@ cases, bias/gate variants, scaler/patch/RoPE gates, and negative-layer-6 test.
 Separate loader, real M2c (`multi,past_cov`), and extended real M2b
 (`known_cov`, layers 0/22) checks also pass. M4 and later milestones remain
 outside this repair.
+
+### M4 normalized floor contract addendum
+
+G4.3 uses `normalized-v1`, with the dumped float32 anchor held fixed across
+both companions. The existing `floor_fr.*.predict` metadata uses raw output
+space (PLAN C.4); it is not a normalized-space floor (PLAN D.3 G4.3).
+`tests/predict_metric.hpp` therefore derives a separately named in-memory
+floor from the existing f64 and f32-math companion predictions. It never
+rewrites or reinterprets stored floor keys. G3 and G4.1 retain their existing
+floors and comparison helpers.
+
+All stored values are promoted to double before arithmetic. For each element,
+`z64 = asinh((y64 - loc32) / scale32)` and
+`w = scale32 * cosh(z64)`. The floor is the larger maximum of
+`abs(y32-y64)/w` and `abs(y32-ymath)/w`, divided by `rms(z64)`.
+The native error uses `abs(native-y32)/w / rms(z64)` in the same frame.
+The acceptance rule remains `max(2*floor, 16*2^-24)`.
+Both companions are mandatory; invalid frames, nonfinite values, missing
+companions and zero normalized RMS are errors, never fallback paths.
+`test_predict_metric` covers large offsets with small normalized values,
+multiple row frames, both companions, zero RMS, invalid scales and corrupt
+native output. Reference generation and all baseline files remain unchanged.
+
+M4 native validation covers all context-only manifest cases, both signs, block
+zero: tiny/tiny-bias 16 cases, 32 selections, 96 comparisons; real 9 cases,
+18 selections, 54 comparisons, including `ctx_cap` and `bench_32k`.
+All three gates pass with no missing companions. Maximum G4.1 ratios are
+0.632549 (tiny variants) and 0.627645 (real). The strict extended M3 replay
+remains mandatory after the shared small-linear and narrow SDPA changes.
+Native kernels read weights and inputs only, never reference tensors.
+
+The anchor regression uses distinct rows and multiple context patches:
+native scaler frames are expanded per time step, so the last context frame
+is at `row*T + T-1`, not `row*L + L-1`. Small linear contractions retain
+float32 FMA rounding; narrow attention value contractions retain separate
+float32 multiply/add. The head uses the existing SLEEF-derived exponential
+and a double prefix accumulator with each cumsum prefix cast to float32.
+The retained component and end-to-end gates reject the pre-fix arithmetic.

@@ -1,11 +1,12 @@
 # Notices for adapted numerical helpers
 
-These notices apply to the indicated portions of `src/layers.cpp`, not to
+These notices apply to the indicated portions of `src/layers.cpp` and
+`src/head.cpp`, not to
 the entire project. No project-wide code licence is selected here.
 
 ## SLEEF (Boost Software License 1.0)
 
-`activation_exp` adapts the `xexpf` range reduction and polynomial and the
+`activation_exp` (in both files) adapts the `xexpf` range reduction and polynomial and the
 `L2Uf`, `L2Lf`, and `R_LN2f` constants to scalar C++ with explicit FMA.
 The copyright notice and complete licence are retained in `SLEEF.txt`.
 

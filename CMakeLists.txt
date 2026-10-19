@@ -48,12 +48,14 @@ set(TIMESTRAL_SRC
     src/scaler.cpp
     src/layers.cpp
     src/encoder.cpp
+    src/head.cpp
+    src/predict_block.cpp
     src/rope.cpp)
 
 # PyTorch materializes multiply/add separately at the scaler float32 boundaries.
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-  set_source_files_properties(src/scaler.cpp src/layers.cpp PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
+  set_source_files_properties(src/scaler.cpp src/layers.cpp src/head.cpp PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
 endif()
 
 if(TIMESTRAL_SHARED)

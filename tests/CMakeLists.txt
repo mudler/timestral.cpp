@@ -53,3 +53,8 @@ set_tests_properties(test_encoder_209m PROPERTIES SKIP_RETURN_CODE 77)
 add_test(NAME test_encoder_negative_layer6_209m COMMAND test_encoder --real --negative-layer6)
 set_tests_properties(test_encoder_negative_layer6_209m PROPERTIES
   SKIP_RETURN_CODE 77 ENVIRONMENT "TIMESTRAL_TEST_REAL_CASES=uni_short")
+
+ts_add_test(test_head)
+add_test(NAME test_head_units COMMAND test_head --unit)
+add_test(NAME test_head_209m COMMAND test_head --real)
+ts_add_test(test_predict_metric)

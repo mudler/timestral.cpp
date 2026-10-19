@@ -4,7 +4,7 @@
 #include <algorithm>
 namespace ts {
 // F32 linear: reference-sized contractions use FMA panels. Small dots
-// retain the widened fallback required by the measured tiny component floors.
+// accumulate sequential F32 FMA, matching the pinned CPU SGEMM.
 // Inputs and weights remain F32; no reference values enter this kernel.
 static void linear_f32(ggml_tensor* dst,int ith,int nth,void*) {
     auto weight=dst->src[0], input=dst->src[1], bias=dst->src[2];
@@ -25,9 +25,9 @@ static void linear_f32(ggml_tensor* dst,int ith,int nth,void*) {
             }
             y[i]=b?sum+b[i%n]:sum;
         } else {
-            double sum=b ? b[i%n] : 0;
-            for(int64_t j=0;j<k;++j)sum+=double(w[(i%n)*k+j])*x[(i/n)*k+j];
-            y[i]=float(sum);
+            float sum=0;
+            for(int64_t j=0;j<k;++j)sum=std::fma(w[(i%n)*k+j],x[(i/n)*k+j],sum);
+            y[i]=b?sum+b[i%n]:sum;
         }
     }
 }
@@ -134,13 +134,14 @@ static void sdpa_f32(ggml_tensor* dst,int ith,int nth,void* split_data) {
             }
             logits[j]=float(dot)*float(1/std::sqrt(double(hd)))+M[(r*S+t)*S+j];mx=std::max(mx,logits[j]);}
         float sums[8]={};int64_t end=keys/8*8;
-        for(int64_t j=0;j<keys;++j){p[j]=j<end?attention_exp(logits[j]-mx):std::exp(logits[j]-mx);if(j<end)sums[j%8]+=p[j];}
+        for(int64_t j=0;j<keys;++j){p[j]=j<end?attention_exp(logits[j]-mx):float(std::exp(double(logits[j]-mx)));if(j<end)sums[j%8]+=p[j];}
         float a0=sums[0]+sums[4],a1=sums[1]+sums[5],a2=sums[2]+sums[6],a3=sums[3]+sums[7];
         float sum=(a0+a2)+(a1+a3);for(int64_t j=end;j<keys;++j)sum+=p[j];
         // CPU flash reference normalizes after the value contraction, not
         // each probability before it. Preserve that rounding boundary.
         float reciprocal=1.0f/float(sum);
-        for(int64_t d=0;d<hd;++d){float y=0;for(int64_t j=0;j<keys;++j)y=std::fma(p[j],V[(r*S+j)*D+h*hd+d],y);Y[(r*S+t)*D+h*hd+d]=float(y)*reciprocal;}
+        // Narrow output GEMM uses separate multiply/add; wide panels use FMA.
+        for(int64_t d=0;d<hd;++d){float y=0;for(int64_t j=0;j<keys;++j){if(hd<16)y+=p[j]*V[(r*S+j)*D+h*hd+d];else y=std::fma(p[j],V[(r*S+j)*D+h*hd+d],y);}Y[(r*S+t)*D+h*hd+d]=float(y)*reciprocal;}
     }
 }
 ggml_tensor* attention_time(ggml_context* ctx,ggml_tensor* q,ggml_tensor* k,ggml_tensor* v,ggml_tensor* mask,size_t split) {
