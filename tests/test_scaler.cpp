@@ -1,6 +1,9 @@
 #include "scaler.hpp"
 #include "model_loader.hpp"
 #include "parity.hpp"
+#include "json_min.hpp"
+#include <fstream>
+#include <sstream>
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
@@ -55,7 +58,6 @@ void units(const Config& source) {
 struct Fixture {
     tstest::Baseline b;
     explicit Fixture(const std::string& path) { require(b.open(path,true),path); }
-    bool has(const std::string& n) { return ggml_get_tensor(b.ctx,n.c_str()); }
     ggml_tensor* tensor(const std::string& n) { auto t=ggml_get_tensor(b.ctx,n.c_str()); require(t!=nullptr,"missing "+n); return t; }
     template<class T> std::vector<T> get(const std::string& n, ggml_type ty) {
         auto t=tensor(n); require(t->type==ty,"wrong type "+n);
@@ -64,26 +66,63 @@ struct Fixture {
     std::vector<float> f(const std::string& n) { return get<float>(n,GGML_TYPE_F32); }
     std::vector<int8_t> mask(const std::string& n) { return get<int8_t>(n,GGML_TYPE_I8); }
 };
-void check_fixture(const std::string& path,const Config& c, size_t& blocks) {
+struct Case {
+    std::string name;
+    int64_t horizon;
+    bool cov, known;
+};
+std::vector<Case> manifest(bool real) {
+    std::ifstream in(std::string(TS_SOURCE_DIR)+"/tests/cases.json");
+    require(bool(in),"cannot open cases.json");
+    std::ostringstream text; text << in.rdbuf();
+    auto source=text.str();
+    auto doc=jsonmin::Parser(source).object();
+    std::vector<Case> result;
+    for(const auto& value:doc.at("cases").arr) {
+        const auto& o=value.obj;
+        if(!real && !o.at("tiny").b) continue;
+        auto count=[&](const char* group,const char* field) -> int64_t {
+            auto it=o.find(group); if(it==o.end()) return 0;
+            auto f=it->second.obj.find(field);
+            return f==it->second.obj.end()?0:f->second.integer();
+        };
+        bool known=count("known","numeric") || count("known","indicator") || count("cat_known","rows");
+        bool cov=known || count("past","numeric") || count("cat_past","rows");
+        auto h=o.at("H").integer();
+        result.push_back({o.at("name").text,real?h:std::max<int64_t>(1,h/4),cov,known});
+    }
+    require(!result.empty(),"empty manifest");
+    return result;
+}
+void check_fixture(const std::string& path,const Config& c, const Case& spec, size_t& blocks) {
     require(tstest::host_gates_or_skip(path),"HOST_SKIP");
     Fixture f(path);
     for (auto pass : {"pos","neg"}) {
-        std::vector<int> ids;
-        for(int i=0; f.has(std::string(pass)+".b"+std::to_string(i)+".scale.in"); ++i) ids.push_back(i);
-        require(!ids.empty(),"no blocks");
-        if(ids.size()>1) ids={ids.front(),ids.back()};
+        // Same schedule as baseline_contract.expected, independent of dumped names.
+        const int64_t patches=(spec.horizon+c.patch_size-1)/c.patch_size;
+        const int last=int((patches+c.block_size-1)/c.block_size)-1;
+        std::vector<int> ids{0};
+        if(last>0) ids.push_back(last);
         for(int id:ids) {
             std::string p=std::string(pass)+".b"+std::to_string(id)+".";
+            const int64_t h=std::min<int64_t>(c.block_size,patches-int64_t(id)*c.block_size);
+            for(auto name:{"scale.in","scale.observed","loc","scale","scaled",
+                           "denorm.in","anchor.loc","anchor.scale","predict"}) f.tensor(p+name);
+            if(spec.cov && c.covariate_enabled) {
+                f.tensor(p+"known.rows"); f.tensor(p+"known.scaled");
+                if(spec.known) for(auto name:{"known.loc","known.scale","known.is_binary"}) f.tensor(p+name);
+            }
+            if(h>1) { f.tensor(p+"refine.clamp.in"); f.tensor(p+"refine.clamp.out"); }
             auto x=f.f(p+"scale.in"); auto m=f.mask(p+"scale.observed");
             size_t len=f.tensor(p+"scale.in")->ne[0], rows=x.size()/len;
             auto a=scale_rows(c,x,m,rows,len);
             require(tstest::compare_ulp(a.loc,f.f(p+"loc"),0,(p+"G1.1.loc").c_str()).ok,"G1.1 loc");
             require(tstest::compare_ulp(a.scale,f.f(p+"scale"),0,(p+"G1.1.scale").c_str()).ok,"G1.1 scale");
             require(tstest::compare_ulp(a.scaled,f.f(p+"scaled"),2,(p+"G1.2").c_str()).ok,"G1.2");
-            if(f.has(p+"known.rows")) {
+            if(spec.cov && c.covariate_enabled) {
                 auto kr=f.mask(p+"known.rows");
                 bool any_known=std::any_of(kr.begin(),kr.end(),[](int8_t v) { return v!=0; });
-                require(!any_known || f.has(p+"known.loc"),"missing known statistics");
+                require(any_known==spec.known,"known row mask disagrees with manifest");
                 if(any_known) {
                     auto st=instance_norm_stats(c,x,m,rows,len);
                     auto rl=f.f(p+"known.loc"), rs=f.f(p+"known.scale");
@@ -117,7 +156,7 @@ void check_fixture(const std::string& path,const Config& c, size_t& blocks) {
             std::vector<double> mag(inp.size()); size_t stride=inp.size()/loc.size();
             for(size_t i=0;i<inp.size();++i) mag[i]=std::abs((c.use_asinh?std::sinh(double(inp[i])):double(inp[i]))*sc[i/stride])+std::abs(double(loc[i/stride]));
             require(tstest::compare_mag(out,f.f(p+"predict"),mag,6,(p+"G1.4").c_str()).ok,"G1.4 denorm");
-            if(f.has(p+"refine.clamp.in")) {
+            if(h>1) {
                 auto z=f.f(p+"refine.clamp.in"); auto last=f.tensor(p+"refine.clamp.in")->ne[0];
                 require(tstest::compare_exact_f32(clamp_nonfinite(z,last),f.f(p+"refine.clamp.out"),(p+"clamp").c_str()).ok,"clamp");
             }
@@ -134,20 +173,29 @@ int main(int argc,char** argv) {
         const bool real=argc>1 && std::string(argv[1])=="--real";
         const char* root=std::getenv(real?"TIMESTRAL_TEST_REAL_BASELINES":"TIMESTRAL_TEST_TINY");
         if(!root || !*root) { std::cerr<<"SKIP: baseline root unset (unit tests passed)\n"; return 77; }
-        std::vector<std::string> cases={"uni_short","uni_one_patch","multi","past_cov","known_cov","cat_uni","cat_multi","long_h","long_h_known","nans","nonneg","const","all_missing","ctx_cap"};
-        size_t count=0, blocks=0, missing=0;
+        auto cases=manifest(real);
+        size_t present=0, absent=0;
+        for(auto variant: real?std::vector<std::string>{"real"}:std::vector<std::string>{"tiny","tiny-bias"}) {
+            for(const auto& spec:cases) {
+                auto path=std::string(root)+"/"+variant+"/baseline-"+spec.name+"-f32.gguf";
+                if(std::filesystem::exists(path)) ++present;
+                else { ++absent; std::cerr << "MISSING " << variant << "/" << spec.name << '\n'; }
+            }
+        }
+        if(absent) return present?1:77;
+        size_t count=0, blocks=0;
         for(auto variant: real?std::vector<std::string>{"real"}:std::vector<std::string>{"tiny","tiny-bias"}) {
             const char* realmodel=std::getenv("TIMESTRAL_TEST_GGUF");
             if(real && !realmodel) { std::cerr<<"SKIP: TIMESTRAL_TEST_GGUF unset\n"; return 77; }
             auto mdl=Model::load(real?realmodel:models+"/timestral-"+variant+"-f32.gguf");
-            for(auto name:cases) {
+            for(const auto& spec:cases) {
+                const auto& name=spec.name;
                 std::string path=std::string(root)+"/"+variant+"/baseline-"+name+"-f32.gguf";
-                if(!std::filesystem::exists(path)) { ++missing; std::cerr<<"MISSING "<<variant<<"/"<<name<<'\n'; continue; }
                 std::cerr<<"FIXTURE "<<variant<<"/"<<name<<'\n';
-                check_fixture(path,mdl.config(),blocks); ++count;
+                check_fixture(path,mdl.config(),spec,blocks); ++count;
             }
         }
-        std::cerr<<"SCALER cases="<<count<<" pass/blocks="<<blocks<<" missing="<<missing<<'\n';
-        return missing?77:0;
+        std::cerr<<"SCALER cases="<<count<<" pass/blocks="<<blocks<<" missing=0"<<'\n';
+        return 0;
     } catch(const std::exception& e) { std::cerr<<e.what()<<'\n'; return std::string(e.what())=="HOST_SKIP"?77:1; }
 }

@@ -1,6 +1,6 @@
 #pragma once
-// A small JSON reader for flat config files: one object whose values are numbers, strings,
-// booleans, or arrays of those. Enough for config.json; not a general parser.
+// A small JSON reader for config files and the case manifest: objects, numbers,
+// strings, booleans, and arrays. Not a general JSON parser.
 // Numbers are kept as the original text and converted with strtod/strtoll on request, so
 // there is no rounding other than the conversion itself.
 #include <cstdlib>
@@ -12,10 +12,11 @@
 namespace jsonmin {
 
 struct Value {
-    enum Kind { Num, Str, Bool, Arr } kind = Num;
+    enum Kind { Num, Str, Bool, Arr, Obj } kind = Num;
     std::string text;            // Num: source text; Str: decoded string
     bool b = false;
     std::vector<Value> arr;
+    std::map<std::string, Value> obj;
     double num() const { return std::strtod(text.c_str(), nullptr); }
     long long integer() const {
         char* end = nullptr;
@@ -40,12 +41,13 @@ public:
             expect('}'); break;
         }
         ws();
-        if (i_ != s_.size()) throw std::runtime_error("trailing text after the object");
+        if (depth_ == 0 && i_ != s_.size()) throw std::runtime_error("trailing text after the object");
         return o;
     }
 private:
     const std::string& s_;
     size_t i_ = 0;
+    size_t depth_ = 0;
     char peek() const { if (i_ >= s_.size()) throw std::runtime_error("unexpected end"); return s_[i_]; }
     void expect(char c) { if (peek() != c) throw std::runtime_error(std::string("expected '") + c + "'"); ++i_; }
     void ws() { while (i_ < s_.size() && (s_[i_] == ' ' || s_[i_] == '\n' || s_[i_] == '\t' || s_[i_] == '\r')) ++i_; }
@@ -64,7 +66,8 @@ private:
     Value value() {
         Value v;
         char c = peek();
-        if (c == '"') { v.kind = Value::Str; v.text = string(); }
+        if (c == '{') { v.kind = Value::Obj; ++depth_; v.obj = object(); --depth_; }
+        else if (c == '"') { v.kind = Value::Str; v.text = string(); }
         else if (c == '[') {
             v.kind = Value::Arr; ++i_; ws();
             if (peek() == ']') { ++i_; return v; }

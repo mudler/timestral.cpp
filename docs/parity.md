@@ -228,9 +228,9 @@ quantile axes, and invalid shapes/masks/settings. Smoke, parity-helper
 negative tests, tiny model loader, and real model loader pass separately.
 
 A concurrent real-reference run supplied only a subset during this check:
-11 of 14 cases, 22 pass/block selections, all available gates passing.
-The absent cases were `long_h`, `long_h_known`, and `ctx_cap`; the real scaler
-command returned **77**, not a full-suite pass. This does not complete real
+11 of 15 manifest cases, 22 pass/block selections, all available gates passing.
+The absent cases were `long_h`, `long_h_known`, `ctx_cap`, and `bench_32k`.
+The old command omitted `bench_32k` and returned **77**, not a full-suite pass. This does not complete real
 M1 acceptance, later milestones, or native end-to-end forecasting.
 The root acceptance run must recheck the complete real suite.
 
@@ -259,5 +259,35 @@ env -u TIMESTRAL_TEST_TINY ctest --test-dir "$TIMESTRAL_WORK/build" \
 For real scaler gates, set `TIMESTRAL_TEST_REAL_BASELINES` to the suite root
 containing `real/`, and `TIMESTRAL_TEST_GGUF` to the converted real model.
 Then run `ctest --test-dir "$TIMESTRAL_WORK/build" -R '^test_scaler_209m$'
---output-on-failure`. Missing cases or incompatible host metadata return 77;
-a malformed available fixture or numerical mismatch fails with 1.
+--output-on-failure`. An entirely absent suite or incompatible host metadata
+returns 77. A partially present suite, malformed fixture, or numerical mismatch
+fails with 1.
+
+### Coverage checks after review
+
+The scaler derives case selection from `tests/cases.json`: 14 tiny cases per
+variant and 15 real cases, including `bench_32k`. It checks file presence before
+opening any baseline. Block selection comes from the manifest horizon and GGUF
+patch/block sizes, not from tensors present in the dump. Tiny horizons use
+`max(1, H / 4)`, matching `baseline_contract.scaled_case`.
+
+For each selected block in both passes, all scaler and denormalization tensors
+are mandatory. Covariate-enabled cases require known-row tensors; cases with
+known covariates also require their statistics. Clamp inputs and outputs are
+mandatory when the block contains more than one horizon patch. These conditions
+match `baseline_contract.expected`; its implementation remains unchanged.
+
+The negative CLI fixtures copy or rename tensor records only in scratch files.
+They reject a missing real benchmark, a missing terminal block, and missing
+known/clamp tensors with exit 1. Run them without a Python environment or packages:
+
+```sh
+python3 tests/test_scaler_coverage.py "$TIMESTRAL_WORK/build/tests/test_scaler" \
+  "$TIMESTRAL_TEST_TINY" "$TIMESTRAL_WORK"
+```
+
+After this coverage fix, all six negative scenarios pass, alongside the units,
+28 tiny fixtures (64 block/pass selections), and four loader/helper/smoke
+regressions. None skip. Production arithmetic and tolerances remain unchanged.
+The full real suite remains pending; this review does not test files while the
+reference generator is writing them.
