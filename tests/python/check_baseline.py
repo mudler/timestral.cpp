@@ -3,7 +3,7 @@
 
     check_baseline.py --dir DIR [--cases tests/cases.json] [--case NAME ...]
 
-For every case with a baseline in DIR:
+For every required case in DIR (15 real or 14 with --tiny):
   - the record names of C.3 are all present (derived from the case and the model config);
   - the statistics stat.<name>.rms / .numel exist for every float tensor, and kappa, rho,
     max_logit exist where the cap table needs them (f32 file);
@@ -19,6 +19,9 @@ Exit code 0 when everything holds, 1 otherwise.
 """
 import argparse
 import json
+import math
+
+import numpy as np
 import re
 import sys
 from pathlib import Path
@@ -95,27 +98,24 @@ def expected(kv, tensors, case):
     has_known = bool(case.get("known", {}).get("numeric", 0) or case.get("known", {}).get("indicator", 0) or
                      case.get("cat_known", {}).get("rows", 0))
     cov_path = has_cov and cfg["covariate_enabled"]
-    R_rows = None
     names = set()
-    calls = {}
 
     def add(*n):
         names.update(n)
 
-    blocks = {}
-    for p in ("pos", "neg"):
-        k = 0
-        while f"{p}.b{k}.args.inputs" in tensors:
-            blocks.setdefault(p, []).append(k)
-            k += 1
+    ps, bs = cfg['patch_size'], cfg['block_size']
+    patches = (case['H'] + ps - 1) // ps
+    blocks = {p: range((patches + bs - 1) // bs) for p in ('pos', 'neg')}
     any_multi = False
     n_blocks_total = 0
     for p, ks in blocks.items():
         for k in ks:
             n_blocks_total += 1
             pre = f"{p}.b{k}."
-            R = tensors[pre + "args.inputs"].shape[0]
-            h = int(tensors[pre + "args.horizon_patches"][0])
+            R = case['B'] * (case['V'] + sum(case.get(c, {}).get(f, 0) for c, f in
+                (('past', 'numeric'), ('known', 'numeric'), ('known', 'indicator'),
+                 ('cat_past', 'rows'), ('cat_known', 'rows'))))
+            h = min(bs, patches - k * bs)
             multi = h > 1
             any_multi |= multi
             add(*[pre + n for n in (
@@ -131,12 +131,12 @@ def expected(kv, tensors, case):
             if multi:
                 add(*[pre + n for n in ("frames.in.sinh_median", "frames.loc", "frames.scale", "refine.loc",
                                          "refine.scale", "refine.clamp.in", "refine.clamp.out")])
-            if (pre + "args.role_ids") in tensors:
+            if cov_path:
                 add(pre + "args.role_ids", pre + "refine.target_rows", pre + "mask.block_anchor",
                     pre + "mask.block_active")
-                if (pre + "known.rows") in tensors:
+                if cov_path:
                     add(pre + "known.rows", pre + "known.scaled")
-                    if bool(tensors[pre + "known.rows"].any()):
+                    if has_known:
                         add(pre + "known.loc", pre + "known.scale", pre + "known.is_binary")
                 if has_known:
                     add(pre + "args.known_future", pre + "args.known_future_mask")
@@ -153,23 +153,177 @@ def expected(kv, tensors, case):
         add(f"{p}.assemble.rows", f"{p}.assemble.mask", f"{p}.assemble.n_tgt", f"{p}.cap.in", f"{p}.cap.rows",
             f"{p}.cap.mask", f"{p}.cap.out", f"{p}.cap.scale", f"final.raw.{p}")
     add("input.context")
+    for key, present in [('past', case.get('past', {}).get('numeric', 0)),
+                         ('known', case.get('known', {}).get('numeric', 0) or case.get('known', {}).get('indicator', 0)),
+                         ('cat_past', case.get('cat_past', {}).get('rows', 0)),
+                         ('cat_known', case.get('cat_known', {}).get('rows', 0))]:
+        if present:
+            add('input.' + key)
     return names, dict(has_cov=has_cov, has_known=has_known, cov_path=cov_path, any_multi=any_multi,
                        n_blocks=n_blocks_total, cat=bool(case.get("cat_past", {}).get("rows", 0) or
                                                          case.get("cat_known", {}).get("rows", 0)),
                        single_target=(case["V"] == 1), multi_blocks=n_blocks_total > 2)
 
 
-def check_case(directory, case):
+MODES = ('f32', 'f32-math', 'f64', 'f64-rerun', 'f32-math-rerun')
+
+
+def scaled_case(case, tiny):
+    result = json.loads(json.dumps(case))
+    if tiny:
+        for key in ('T', 'H'):
+            result[key] = max(1, result[key] // 4)
+        if result.get('missing', {}).get('leading'):
+            result['missing']['leading'] = max(1, result['missing']['leading'] // 4)
+    return result
+
+
+def rerun_names(names):
+    """Outputs of the standalone components in C.3, not arbitrary source subsets."""
+    block = re.compile(r'^(pos|neg)\.b\d+\.(scaled|loc|scale|known\.(loc|scale|is_binary|scaled)|'
+                       r'patch\.(hidden_out|out)|layer\.\d+\.(out|mlp_norm|mlp|attn\.\d+\..+)|'
+                       r'out_norm|head\.(raw|monotone)|predict|refined|frames\.(loc|scale|in\.sinh_median))$')
+    return {n for n in names if block.match(n) or re.match(r'^(pos|neg)\.cap\.(out|scale)$', n)}
+
+
+def finite_nonnegative(value):
+    return type(value) in (float, int) and math.isfinite(value) and value >= 0
+
+
+def validate_records(t, kv, case, mode, cfg):
+    name = case['name'] + ':' + mode
+    for n, a in t.items():
+        if not a.size:
+            bad(f'{name}: empty tensor {n}')
+        if bio.is_float(a):
+            # Input/category and host-double islands need not follow model precision.
+            if not n.startswith('input.') and '.frames.' not in n:
+                want = np.float64 if mode.startswith('f64') else np.float32
+                if a.dtype != want:
+                    bad(f'{name}: wrong dtype for {n}: {a.dtype}')
+            if not mode.endswith('rerun'):
+                rms = kv.get(f'stat.{n}.rms')
+                if not finite_nonnegative(rms) or kv.get(f'stat.{n}.numel') != a.size:
+                    bad(f'{name}: invalid rms/numel for {n}')
+        if mode == 'f32':
+            stats = []
+            if re.search(r'\.(patch\.(hidden_out|out)|head\.raw|layer\.\d+\.(mlp|attn\.\d+\.(q|k|v|q_rope|k_rope|gate|out)))$', n):
+                stats.append('kappa')
+            if n.endswith(('.patch.out', '.head.raw')):
+                stats.append('kappa_res')
+            if n.endswith('.sdpa'):
+                stats.append('max_logit')
+            if re.search(r'\.layer\.\d+\.(mlp|attn\.\d+\.out)$', n):
+                stats.append('rho')
+            for stat in stats:
+                if not finite_nonnegative(kv.get(f'stat.{n}.{stat}')):
+                    bad(f'{name}: missing/invalid {stat} for {n}')
+    shapes = {'input.context': (case['B'], case['V'], case['T'])}
+    q = len(cfg['quantile_knots'])
+    for n in ('final.quantiles', 'final.raw.pos', 'final.raw.neg'):
+        shapes[n] = (case['B'], case['V'], case['H'], q)
+    for n, shape in shapes.items():
+        if n in t and t[n].shape != shape:
+            bad(f'{name}: wrong shape {n}: {t[n].shape}, expected {shape}')
+
+
+def validate_metadata(kv, case, mode, tiny, reference=None):
+    name = case['name'] + ':' + mode
+    cfg = json.loads(kv['model.config_json'])
+    # head_dim is a dataclass property, not a field in serialized config JSON.
+    if type(cfg['num_heads']) is not int or cfg['num_heads'] <= 0:
+        raise ValueError(f'{name}: invalid num_heads')
+    cfg['head_dim'] = cfg['d_model'] // cfg['num_heads']
+    for key in ('patch_size', 'block_size', 'context_length', 'd_model', 'num_heads', 'head_dim', 'mlp_hidden_dim'):
+        if type(cfg[key]) is not int or cfg[key] <= 0 or kv.get('model.' + key) != cfg[key]:
+            raise ValueError(f'{name}: invalid model.{key}')
+    sched = cfg['block_schedule']
+    if not sched or any(k not in LAYER_KIND_AXES for k in sched) or kv.get('model.n_layers') != len(sched):
+        raise ValueError(f'{name}: invalid block schedule')
+    if cfg['d_model'] != cfg['num_heads'] * cfg['head_dim']:
+        raise ValueError(f'{name}: inconsistent head dimensions')
+    if kv.get('mode') != mode or kv.get('case.tiny') is not tiny:
+        bad(f'{name}: inconsistent mode/case.tiny')
+    if json.loads(kv['case.json']) != case or kv.get('case.name') != case['name']:
+        bad(f'{name}: case.json/name differs from requested case')
+    for k in ('B', 'V', 'T', 'H'):
+        if kv.get('case.' + k) != case[k]:
+            bad(f'{name}: inconsistent case.{k}')
+    blocks = (case['H'] + cfg['patch_size'] * cfg['block_size'] - 1) // (cfg['patch_size'] * cfg['block_size'])
+    if kv.get('expect.error.type'):
+        blocks = 0  # Only pre-block errors have a supported omission contract.
+    if kv.get('case.n_blocks') != blocks:
+        bad(f'{name}: case.n_blocks must be {blocks}')
+    layers = set(range(len(sched))) if tiny or case.get('layers', 'all') == 'all' else set(case['layers']) | {len(sched)-1}
+    dumped = set(range(len(sched))) if kv['layers.dumped'] == 'all' else {int(v) for v in kv['layers.dumped'].split(',')}
+    if dumped != layers or not layers <= set(range(len(sched))):
+        bad(f'{name}: layers.dumped differs from required layers')
+    if reference:
+        for k in reference:
+            if k.startswith(('model.', 'env.hf')) and kv.get(k) != reference[k]:
+                bad(f'{name}: inconsistent {k}')
+    if kv.get('repro.bitwise_equal') is not True:
+        bad(f'{name}: bitwise reproducibility missing')
+    if not mode.endswith('rerun') and kv.get('repro.runs') != 2:
+        bad(f'{name}: expected two reproducibility runs')
+    if mode.startswith('f64') and not kv.get('truth.patches'):
+        bad(f'{name}: missing truth.patches')
+    if mode.endswith('rerun') and kv.get('rerun.source') != 'f32':
+        bad(f'{name}: rerun.source must be f32')
+    if mode == 'f64-rerun':
+        ratio = kv.get('selfcheck.max_ratio')
+        if (kv.get('selfcheck.ok') is not True or not finite_nonnegative(ratio)
+                or ratio > 1e-12 or kv.get('selfcheck.limit') != 1e-12):
+            bad(f'{name}: invalid selfcheck (required ratio <= 1e-12)')
+    return cfg
+
+
+def check_case(directory, case, tiny=False):
+    try:
+        return _check_case(directory, scaled_case(case, tiny), tiny)
+    except (KeyError, ValueError, TypeError, IndexError, OSError) as exc:
+        bad(f"{case['name']}: malformed/unsupported baseline: {exc}")
+        return False
+
+
+def _check_case(directory, case, tiny):
     name = case["name"]
     paths = {m: bio.case_file(directory, name, m) for m in ("f32", "f32-math", "f64", "f64-rerun", "f32-math-rerun")}
     if not paths["f32"].exists():
+        bad(f'{name}: required f32 baseline missing')
         return False
     print(f"== {name}")
     t, kv = bio.read_baseline(paths["f32"])
-    case_run = json.loads(kv["case.json"])
+    cfg = validate_metadata(kv, case, 'f32', tiny)
+    case_run = case
     err = kv.get("expect.error.type")
     if err:
-        print(f"   reference raised {err}: {kv.get('expect.error.message','')[:100]}")
+        if name not in ('const', 'all_missing'):
+            bad(f'{name}: unexpected reference exception {err}')
+        # Only a documented reference error, identically recorded in every full mode,
+        # may replace outputs. Partial harness errors are not successful reruns.
+        for mode in ('f32-math', 'f64'):
+            if not paths[mode].exists():
+                bad(f'{name}: missing error companion {mode}')
+                continue
+            et, ek = bio.read_baseline(paths[mode])
+            validate_metadata(ek, case, mode, tiny, kv)
+            if any(ek.get(k) != kv.get(k) for k in ('expect.error.type', 'expect.error.message')):
+                bad(f'{name}: inconsistent reference errors in {mode}')
+            if any('.args.inputs' in n for n in et):
+                bad(f'{name}: partial reference error in {mode} needs a step/coverage contract (follow-up)')
+            if 'final.quantiles' in et:
+                bad(f'{name}: error/output modes mixed')
+        if not isinstance(kv.get('expect.error.message'), str) or not kv['expect.error.message']:
+            bad(f'{name}: reference error needs a message')
+        if any('.args.inputs' in n for n in t):
+            bad(f'{name}: partial reference error needs explicit step/coverage contract (follow-up)')
+        if 'final.quantiles' in t:
+            bad(f'{name}: reference error and outputs mixed')
+        for mode in ('f64-rerun', 'f32-math-rerun'):
+            if paths[mode].exists():
+                bad(f'{name}: unexpected rerun artifact for a pre-block reference error: {mode}')
+        return True
     exp, info = expected(kv, t, case_run)
     if not err:
         exp.add("final.quantiles")
@@ -178,19 +332,7 @@ def check_case(directory, case):
         bad(f"{name}: {len(missing)} expected records missing, e.g. {missing[:4]}")
     if not kv.get("repro.bitwise_equal"):
         bad(f"{name}: no bitwise reproducibility record")
-    # statistics
-    for n, a in t.items():
-        if bio.is_float(a):
-            if f"stat.{n}.rms" not in kv or f"stat.{n}.numel" not in kv:
-                bad(f"{name}: no rms/numel statistic for {n}")
-                break
-    cap_stats = [k for k in kv if k.endswith(".kappa")]
-    if not cap_stats and not err:
-        bad(f"{name}: no kappa statistics")
-    if not any(k.endswith(".max_logit") for k in kv) and not err:
-        bad(f"{name}: no max_logit statistics")
-    if not any(k.endswith(".rho") for k in kv) and not err:
-        bad(f"{name}: no rho statistics")
+    validate_records(t, kv, case, 'f32', cfg)
     # wrapped functions
     C = lambda f: kv.get(f"calls.{f}", 0)
     n_blocks = info["n_blocks"]
@@ -225,21 +367,39 @@ def check_case(directory, case):
                 bad(f"{name}: wrapped function {f} called {c} times but the case should not call it")
     # same names across f32 / f32-math / f64
     for m in ("f32-math", "f64"):
+        if not paths[m].exists():
+            bad(f'{name}: required mode {m} missing')
+            continue
         if paths[m].exists():
             t2, kv2 = bio.read_baseline(paths[m])
+            validate_metadata(kv2, case, m, tiny, kv)
+            validate_records(t2, kv2, case, m, cfg)
+            if kv2.get('expect.error.type'):
+                bad(f'{name}: unexpected error in {m}')
+            for n in set(t2) & set(t):
+                if t2[n].shape != t[n].shape or (not bio.is_float(t[n]) and t2[n].dtype != t[n].dtype):
+                    bad(f'{name}: {m} shape/dtype mismatch for {n}')
             if set(t2) != set(t):
                 d = sorted(set(t2) ^ set(t))
                 bad(f"{name}: {m} record names differ from f32: {d[:4]}")
             if not kv2.get("repro.bitwise_equal"):
                 bad(f"{name}: {m}: no reproducibility record")
-            want = np_dtype = "float64"
             if m == "f64" and not kv2.get("truth.patches"):
                 bad(f"{name}: f64 file has no truth.patches")
     # reruns
     for m in ("f64-rerun", "f32-math-rerun"):
         if not paths[m].exists():
+            bad(f'{name}: required mode {m} missing')
             continue
         t3, kv3 = bio.read_baseline(paths[m])
+        validate_metadata(kv3, case, m, tiny, kv)
+        validate_records(t3, kv3, case, m, cfg)
+        need = rerun_names(exp)
+        if set(t3) != need:
+            bad(f'{name}: {m} component coverage differs: missing {sorted(need-set(t3))[:4]}, extra {sorted(set(t3)-need)[:4]}')
+        for n in set(t3) & set(t):
+            if t3[n].shape != t[n].shape:
+                bad(f'{name}: {m} shape mismatch for {n}')
         extra = sorted(set(t3) - set(t))
         if extra:
             bad(f"{name}: {m} has records not in the f32 file: {extra[:4]}")
@@ -247,21 +407,6 @@ def check_case(directory, case):
             bad(f"{name}: {m} is empty")
         if not kv3.get("repro.bitwise_equal"):
             bad(f"{name}: {m}: no reproducibility record")
-        # coverage: each rerunnable group of the f32 file appears
-        need_suffix = ["scaled", "patch.out", "out_norm", "head.raw", "head.monotone", "predict", "refined"]
-        for p in ("pos", "neg"):
-            for k in range(1000):
-                if f"{p}.b{k}.args.inputs" not in t:
-                    break
-                for s in need_suffix:
-                    if f"{p}.b{k}.{s}" not in t3:
-                        bad(f"{name}: {m} lacks {p}.b{k}.{s}")
-                        break
-        if m == "f64-rerun":
-            if not kv3.get("selfcheck.ok"):
-                bad(f"{name}: f64-rerun self-check missing or failed: {kv3.get('selfcheck.max_ratio')}")
-            else:
-                print(f"   f64-rerun self-check: max ratio {kv3['selfcheck.max_ratio']:.2e} (limit 1e-12) at {kv3.get('selfcheck.where')}")
     if name in ("const", "all_missing") and not (("final.quantiles" in t) or err):
         bad(f"{name}: neither outputs nor expect.error")
     print(f"   {len(t)} records, {sum(1 for k in kv if k.startswith('calls.'))} call counters, "
@@ -274,17 +419,31 @@ def main():
     ap.add_argument("--dir", required=True)
     ap.add_argument("--cases", default=str(Path(__file__).resolve().parents[2] / "tests" / "cases.json"))
     ap.add_argument("--case", action="append", default=[])
+    ap.add_argument("--tiny", action="store_true", help="validate scaled tiny suite (14 cases, no bench_32k)")
     a = ap.parse_args()
+    errors.clear()
     spec = bio.load_cases(a.cases)
     validate_cases(spec)
+    if errors:
+        return 1
+    eligible = [c for c in spec['cases'] if not a.tiny or c.get('tiny')]
+    unknown = set(a.case) - {c['name'] for c in eligible}
+    if unknown:
+        bad(f'unknown/ineligible selected cases: {sorted(unknown)}')
+    canonical = bio.load_cases(Path(__file__).resolve().parents[1] / 'cases.json')
+    if not a.case and spec != canonical:
+        bad('full milestone check requires the canonical case specification; use --case for partial checks')
     n = 0
-    for c in spec["cases"]:
-        if a.case and c["name"] not in a.case:
-            continue
-        n += int(check_case(a.dir, c))
+    selected = [c for c in eligible if not a.case or c['name'] in a.case]
+    for c in selected:
+        found = check_case(a.dir, c, tiny=True) if a.tiny else check_case(a.dir, c)
+        if not found:
+            bad(f"{c['name']}: required case not accepted")
+        n += int(found)
     if n == 0:
         bad(f"no baseline found in {a.dir}")
-    print(f"checked {n} cases: {'PASS' if not errors else 'FAIL (%d problems)' % len(errors)}")
+    label = "PARTIAL (not a milestone gate)" if a.case else "FULL"
+    print(f"{label}: checked {n}/{len(selected)} cases: {'PASS' if not errors else 'FAIL (%d problems)' % len(errors)}")
     return 1 if errors else 0
 
 
