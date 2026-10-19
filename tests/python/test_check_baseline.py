@@ -58,7 +58,7 @@ def fixture():
         tt, kk = copy.deepcopy((t, kv))
         kk['mode'] = m
         if m.startswith('f64'):
-            tt = {n: a.astype(np.float64) if cb.bio.is_float(a) else a for n, a in tt.items()}
+            tt = {n: a.astype(np.float64) if cb.bio.is_float(a) and not n.startswith('input.') else a for n, a in tt.items()}
         if m.endswith('rerun'):
             tt = {n: a for n, a in tt.items() if n in cb.rerun_names(set(t))}
             kk.update({'rerun.source': 'f32', 'selfcheck.ok': True,
@@ -117,13 +117,61 @@ class AcceptanceTests(unittest.TestCase):
             t, kv = data[mode]
             data[mode] = {'input.context': t['input.context']}, kv
             kv.update({'case.name': name, 'case.json': json.dumps(case), 'case.n_blocks': 0,
-                       'expect.error.type': 'ValueError', 'expect.error.message': 'reference rejects input'})
+                       'expect.error.type': 'ValueError', 'expect.error.message': 'reference rejects input',
+                       'expect.error.step': 'forecaster._assemble_rows'})
         return case, data
 
-    def test_valid_documented_preblock_error(self):
+    def test_unproven_preblock_errors_fail_closed(self):
         for name in ('const', 'all_missing'):
             case, data = self.error_fixture(name)
-            self.assertEqual(self.run_fixture(data, case), [])
+            self.assertTrue(any('no proven reference exception contract' in e
+                                for e in self.run_fixture(data, case)))
+
+    def test_exception_input_validation(self):
+        for mode in ('f32', 'f32-math', 'f64'):
+            for mutation, diagnostic in [('missing', 'missing stored input'),
+                                         ('shape', 'wrong shape input.context'),
+                                         ('dtype', 'wrong dtype for input.context'),
+                                         ('stats', 'invalid rms/numel for input.context')]:
+                with self.subTest(mode=mode, mutation=mutation):
+                    case, data = self.error_fixture()
+                    t, kv = data[mode]
+                    if mutation == 'missing':
+                        t.clear()
+                    elif mutation == 'shape':
+                        t['input.context'] = np.zeros((8,), np.float32)
+                    elif mutation == 'dtype':
+                        t['input.context'] = t['input.context'].astype(np.int32)
+                    else:
+                        del kv['stat.input.context.rms']
+                    self.assertTrue(any(diagnostic in e for e in self.run_fixture(data, case)))
+
+    def test_exception_any_block_evidence_rejected(self):
+        for mode in ('f32', 'f32-math', 'f64'):
+            for evidence in ('record', 'counter'):
+                with self.subTest(mode=mode, evidence=evidence):
+                    case, data = self.error_fixture()
+                    t, kv = data[mode]
+                    if evidence == 'record':
+                        t['pos.b0.scaled'] = np.zeros((1,), np.float32)
+                    else:
+                        kv['calls.model.predict_block'] = 1
+                    self.assertTrue(any('block execution evidence' in e
+                                        for e in self.run_fixture(data, case)))
+
+    def test_exception_step_and_harness_errors(self):
+        for name in ('const', 'all_missing'):
+            for step in (None, '', 'not.a.reference.step', 'forecaster._assemble_rows'):
+                with self.subTest(name=name, step=step):
+                    case, data = self.error_fixture(name)
+                    for _, kv in data.values():
+                        kv.update({'expect.error.type': 'AssertionError',
+                                   'expect.error.message': 'instrumentation harness failed'})
+                        if step is None:
+                            del kv['expect.error.step']
+                        else:
+                            kv['expect.error.step'] = step
+                    self.assertTrue(self.run_fixture(data, case))
 
     def test_error_contract_rejections(self):
         case, data = self.error_fixture('uni_short')

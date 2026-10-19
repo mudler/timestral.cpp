@@ -118,12 +118,25 @@ The numeric selfcheck must remain finite, nonnegative, and at most `1e-12`.
 The stored selfcheck limit must equal `1e-12`.
 These checks do not change the plan's tolerance formulas.
 
-Only `const` and `all_missing` may replace outputs with a reference error.
-The three full modes must record the same exception type and message.
-The supported omission contract covers errors before the first block only.
-Such errors require zero recorded blocks and no rerun artifacts, matching the generator's pre-block skip behavior.
-Partial execution errors fail with a follow-up diagnostic.
-Arbitrary harness exceptions do not count as accepted output coverage.
+Exception artifacts currently fail closed, including those for `const` and `all_missing`.
+Acceptance is blocked pending generator provenance for a supported reference refusal and its exact execution step.
+Matching exception type, message, and step across modes does not prove that the reference raised the error.
+The synthetic error fixture is deliberately unproven and must fail; it is not an approved exception identity.
+
+At the pinned reference commit `a534bdbd244d64f3d9d743f46c7bf6fc330ed4ff`,
+`forecaster.py:forecast` accepts missing context values through `_as_context` and does not explicitly reject constant series.
+`scaler.py:compute_causal_statistics` clamps denominators and scales for missing or constant observations.
+No legitimate pre-block refusal for the canonical `const` or `all_missing` inputs is established by these paths.
+The degenerate-output `ValueError` in `_forecast_raw` follows `_block_ar_decode` and cannot justify pre-block omissions.
+The generator catches arbitrary exceptions and records the last wrapped call as `expect.error.step`;
+that record alone cannot distinguish a reference refusal from an instrumentation failure.
+
+Exception validation still requires mandatory stored inputs with valid shapes, dtypes, and statistics in all three full modes.
+A claimed pre-block error requires zero recorded blocks and no rerun artifacts.
+Any block-prefixed tensor, block statistics or empty-record metadata, or block execution counter contradicts that claim.
+Missing steps and inconsistent exception identities or steps also fail validation.
+Post-block errors remain blocked pending a separate step/coverage contract.
+Successful regular and tiny cases still require complete output and component coverage.
 
 ### Known follow-up requirements
 

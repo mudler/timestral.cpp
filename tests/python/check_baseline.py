@@ -12,7 +12,7 @@ For every required case in DIR (15 real or 14 with --tiny):
   - the f32-math and f64 files hold the same record names as the f32 file;
   - the rerun files hold only names of the f32 file, cover the components, and the f64-rerun
     file passed the rerun self-check;
-  - const and all_missing have outputs or an expect.error record.
+  - exception artifacts fail closed pending proven reference provenance.
 It also validates cases.json against the schema of M0d.
 
 Exit code 0 when everything holds, 1 otherwise.
@@ -190,6 +190,48 @@ def finite_nonnegative(value):
     return type(value) in (float, int) and math.isfinite(value) and value >= 0
 
 
+def input_shapes(case):
+    shapes = {'input.context': (case['B'], case['V'], case['T'])}
+    for key, rows, horizon in (
+            ('past', case.get('past', {}).get('numeric', 0), False),
+            ('known', sum(case.get('known', {}).get(k, 0) for k in ('numeric', 'indicator')), True),
+            ('cat_past', case.get('cat_past', {}).get('rows', 0), False),
+            ('cat_known', case.get('cat_known', {}).get('rows', 0), True)):
+        if rows:
+            shapes['input.' + key] = (case['B'], rows, case['T'] + (case['H'] if horizon else 0))
+    return shapes
+
+
+def has_exception(kv):
+    return any(k.startswith('expect.error') for k in kv)
+
+
+def validate_exception(t, kv, case, mode, cfg):
+    name = case['name'] + ':' + mode
+    # No pre-block refusal for the canonical const/all_missing inputs is proven
+    # at the pinned reference. Matching wrapper metadata is not provenance.
+    bad(f'{name}: no proven reference exception contract; acceptance blocked pending generator provenance')
+    validate_records(t, kv, case, mode, cfg)
+    if kv.get('case.n_blocks') != 0:
+        bad(f'{name}: pre-block exception requires case.n_blocks = 0')
+    # These are the only wrapped calls possible before predict_block. Unknown
+    # counters fail closed too, rather than silently authorizing new block work.
+    preblock = {'forecaster._forecast_raw', 'forecaster._assemble_rows',
+                'forecaster._encode_categorical', 'forecaster.target_encode'}
+    block_records = any(re.match(r'^(pos|neg)\.b\d+\.', n) for n in t)
+    block_metadata = any(re.match(r'^(empty\.|stat\.)(pos|neg)\.b\d+\.', k) for k in kv)
+    block_calls = any(k.startswith('calls.') and k[6:] not in preblock and v != 0
+                      for k, v in kv.items())
+    if block_records or block_metadata or block_calls:
+        bad(f'{name}: block execution evidence; post-block errors need a step/coverage contract (follow-up)')
+    for key in ('type', 'message', 'step'):
+        value = kv.get('expect.error.' + key)
+        if not isinstance(value, str) or not value:
+            bad(f'{name}: reference error needs {key}')
+    if any(n.startswith('final.') for n in t):
+        bad(f'{name}: reference error and outputs mixed')
+
+
 def validate_records(t, kv, case, mode, cfg):
     name = case['name'] + ':' + mode
     for n, a in t.items():
@@ -218,7 +260,15 @@ def validate_records(t, kv, case, mode, cfg):
             for stat in stats:
                 if not finite_nonnegative(kv.get(f'stat.{n}.{stat}')):
                     bad(f'{name}: missing/invalid {stat} for {n}')
-    shapes = {'input.context': (case['B'], case['V'], case['T'])}
+    shapes = input_shapes(case)
+    if not mode.endswith('rerun'):
+        for n in shapes:
+            if n not in t:
+                bad(f'{name}: missing stored input {n}')
+            else:
+                want = np.float64 if n.startswith('input.cat_') else np.float32
+                if t[n].dtype != want:
+                    bad(f'{name}: wrong dtype for {n}: {t[n].dtype}')
     q = len(cfg['quantile_knots'])
     for n in ('final.quantiles', 'final.raw.pos', 'final.raw.neg'):
         shapes[n] = (case['B'], case['V'], case['H'], q)
@@ -250,9 +300,7 @@ def validate_metadata(kv, case, mode, tiny, reference=None):
         if kv.get('case.' + k) != case[k]:
             bad(f'{name}: inconsistent case.{k}')
     blocks = (case['H'] + cfg['patch_size'] * cfg['block_size'] - 1) // (cfg['patch_size'] * cfg['block_size'])
-    if kv.get('expect.error.type'):
-        blocks = 0  # Only pre-block errors have a supported omission contract.
-    if kv.get('case.n_blocks') != blocks:
+    if not has_exception(kv) and kv.get('case.n_blocks') != blocks:
         bad(f'{name}: case.n_blocks must be {blocks}')
     layers = set(range(len(sched))) if tiny or case.get('layers', 'all') == 'all' else set(case['layers']) | {len(sched)-1}
     dumped = set(range(len(sched))) if kv['layers.dumped'] == 'all' else {int(v) for v in kv['layers.dumped'].split(',')}
@@ -296,30 +344,19 @@ def _check_case(directory, case, tiny):
     t, kv = bio.read_baseline(paths["f32"])
     cfg = validate_metadata(kv, case, 'f32', tiny)
     case_run = case
-    err = kv.get("expect.error.type")
+    err = has_exception(kv)
     if err:
-        if name not in ('const', 'all_missing'):
-            bad(f'{name}: unexpected reference exception {err}')
-        # Only a documented reference error, identically recorded in every full mode,
-        # may replace outputs. Partial harness errors are not successful reruns.
+        validate_exception(t, kv, case, 'f32', cfg)
         for mode in ('f32-math', 'f64'):
             if not paths[mode].exists():
                 bad(f'{name}: missing error companion {mode}')
                 continue
             et, ek = bio.read_baseline(paths[mode])
-            validate_metadata(ek, case, mode, tiny, kv)
-            if any(ek.get(k) != kv.get(k) for k in ('expect.error.type', 'expect.error.message')):
+            ecfg = validate_metadata(ek, case, mode, tiny, kv)
+            validate_exception(et, ek, case, mode, ecfg)
+            if any(ek.get(k) != kv.get(k) for k in
+                   ('expect.error.type', 'expect.error.message', 'expect.error.step')):
                 bad(f'{name}: inconsistent reference errors in {mode}')
-            if any('.args.inputs' in n for n in et):
-                bad(f'{name}: partial reference error in {mode} needs a step/coverage contract (follow-up)')
-            if 'final.quantiles' in et:
-                bad(f'{name}: error/output modes mixed')
-        if not isinstance(kv.get('expect.error.message'), str) or not kv['expect.error.message']:
-            bad(f'{name}: reference error needs a message')
-        if any('.args.inputs' in n for n in t):
-            bad(f'{name}: partial reference error needs explicit step/coverage contract (follow-up)')
-        if 'final.quantiles' in t:
-            bad(f'{name}: reference error and outputs mixed')
         for mode in ('f64-rerun', 'f32-math-rerun'):
             if paths[mode].exists():
                 bad(f'{name}: unexpected rerun artifact for a pre-block reference error: {mode}')
@@ -374,7 +411,7 @@ def _check_case(directory, case, tiny):
             t2, kv2 = bio.read_baseline(paths[m])
             validate_metadata(kv2, case, m, tiny, kv)
             validate_records(t2, kv2, case, m, cfg)
-            if kv2.get('expect.error.type'):
+            if has_exception(kv2):
                 bad(f'{name}: unexpected error in {m}')
             for n in set(t2) & set(t):
                 if t2[n].shape != t[n].shape or (not bio.is_float(t[n]) and t2[n].dtype != t[n].dtype):
@@ -394,6 +431,8 @@ def _check_case(directory, case, tiny):
         t3, kv3 = bio.read_baseline(paths[m])
         validate_metadata(kv3, case, m, tiny, kv)
         validate_records(t3, kv3, case, m, cfg)
+        if has_exception(kv3):
+            bad(f'{name}: unexpected error in {m}')
         need = rerun_names(exp)
         if set(t3) != need:
             bad(f'{name}: {m} component coverage differs: missing {sorted(need-set(t3))[:4]}, extra {sorted(set(t3)-need)[:4]}')
