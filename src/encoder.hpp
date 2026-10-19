@@ -16,14 +16,16 @@ public:
     explicit Encoder(const Model& model) : model_(model) {}
     Embedding embed(const std::vector<float>& values, const std::vector<int8_t>& observed, size_t rows, size_t length);
     Embedding project(const std::vector<float>& features, size_t rows, size_t patches);
-    // Time-only replay: x is [rows, sequence, d_model]. Returned vectors own data.
+    // Replay any scheduled kind: x is [rows, sequence, d_model]. Results own data.
+    // variate_mask: [patches, row queries, row keys], true = attend; empty = all.
+    // norm/gated/out use original axes; variate q/k/v/sdpa/gate use swapped axes.
     // Teacher keys replace downstream inputs, not reported outputs. Unknown keys fail.
     // Norm/q/k/v, q_rope/k_rope, cos/sin, sdpa/gate/gated/out and MLP boundaries
     // permit independent local gates. Fused qkv diagnostics use reference order;
     // converted weights themselves remain head-major and read-only.
     LayerValues run_layer(size_t layer, const std::vector<float>& x, size_t rows,
         size_t sequence, const TimeMask& mask, const std::vector<int64_t>& positions,
-        const LayerValues& teacher = {});
+        const LayerValues& teacher = {}, const std::vector<int8_t>& variate_mask = {});
 private:
     const Model& model_;
     GraphRunner runner_;

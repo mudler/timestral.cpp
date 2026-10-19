@@ -486,3 +486,77 @@ its wall time is 26.92 seconds. Native replay takes 7.61 seconds with peak RSS
 The five files total 852,354,336 bytes after floor metadata. This exceeds the
 plan's per-case artifact estimate; the separate artifact-budget issue remains.
 No size budget or numerical gate is waived.
+
+## M2c: variate and composite layer replay
+
+`Encoder::run_layer` now accepts every metadata-scheduled layer kind. The
+existing time-only convenience wrapper keeps its API and rejects other kinds.
+Variate attention uses `[S,R,D]` inputs and `[S,R,R]` boolean masks, without
+RoPE. Its gated output returns to `[R,S,D]` before the output projection.
+Composite layers apply each axis's norm and residual in schedule order, then
+one MLP with SiLU on the second fused half. Weights remain head-major and
+read-only. The persistent graph allocator is reused; no Python inference is
+introduced. No single-row optimization is enabled.
+
+The red test compiled with the added mask argument and failed at the existing
+`not a time layer` rejection before the generalized implementation. During
+implementation, a variate-only graph exposed uploads to unused time-mask
+inputs. Creating graph inputs only for present axes resolved that failure.
+No reference tensors or tolerance settings changed.
+
+Final canonical tiny coverage is 14 cases times both model variants, both
+signs, and first/last forecast blocks: 64 layer replays per new kind.
+All subcomponents are teacher-forced on their dumped inputs, followed by an
+independent whole-layer replay from its dumped input. Required statistics,
+applicable caps, and local floors remain mandatory.
+
+| selection | layer replays | comparisons | max normalized error | max error/tolerance |
+|---|---:|---:|---:|---:|
+| tiny variate, layer 1 | 64 | 768 | 2.47989e-6 | 0.735703 |
+| tiny time_variate, layer 2 | 64 | 1472 | 2.95799e-6 | 0.832238 |
+| tiny variate_time, layer 3 | 64 | 1472 | 1.65786e-6 | 0.804203 |
+| real multi,past_cov, layer 3 time_variate | 4 | 92 | 9.52688e-5 | 0.864109 |
+
+The real test requires the layer's type, not just index 3. All comparisons use
+unchanged `max(2 * floor_tf, 16u)`. Cap warnings retain their existing sanity
+check meaning. The tiny tests include bitwise `R=1` comparisons of `v` and
+full-path SDPA, both in the pinned reference and native replay. Synthetic tests
+also cover singletons, changed masks, per-slot mask indexing, wrong
+head layouts, absent variate RoPE, invalid indices/shapes/types/strides,
+nonboolean and fully closed masks, malformed teacher inputs, gate-off controls,
+and allocator reuse across graph size changes. Both bias/gate configurations run.
+
+Final regression CTest passes 19/19 with zero skips, excluding the older loader
+and real composite test for separate invocations. The standalone loader passes.
+Real M2b `uni_short` and the separate additive `known_cov` extension pass with
+56 comparisons each, retaining ratios 0.711712 and 0.647168. The real composite
+gate passes separately on canonical `multi,past_cov`. CLI negative tests reject
+unknown/duplicate selections, missing cases, and missing tensor/floor/stat/cap
+families. The scaler CLI coverage regression also passes.
+
+Reproduce with caller-supplied paths (`SUITE` is the finalized canonical A1
+suite; `EXTENSION` is its separate M2b extension; `TIMESTRAL_TEST_GGUF` is the
+real F32 model):
+
+```sh
+export TIMESTRAL_TEST_TINY="$SUITE"
+export TIMESTRAL_TEST_REAL_BASELINES="$SUITE"
+cmake --build "$BUILD" -j2
+TIMESTRAL_TEST_REAL_CASES=uni_short ctest --test-dir "$BUILD" \
+  -E '^test_model_loader$|^test_layer_time_variate_209m$' --output-on-failure
+env -u TIMESTRAL_TEST_TINY "$BUILD/tests/test_model_loader"
+TIMESTRAL_TEST_REAL_CASES=multi,past_cov \
+  "$BUILD/tests/test_layer_time_variate" --real
+TIMESTRAL_TEST_REAL_CASES=uni_short "$BUILD/tests/test_layer_time" --real
+TIMESTRAL_TEST_REAL_CASES=known_cov TIMESTRAL_TEST_REAL_BASELINES="$EXTENSION" \
+  "$BUILD/tests/test_layer_time" --real
+python3 tests/test_layer_coverage.py "$BUILD/tests/test_layer_time_variate" \
+  . "$SUITE" "$SCRATCH"
+python3 tests/test_scaler_coverage.py "$BUILD/tests/test_scaler" "$SUITE" "$SCRATCH"
+```
+
+Default real M2b coverage is intentionally not redirected to the extension:
+the canonical known_cov fixture lacks layer 22. Explicit selections above avoid
+mistaking that known reference gap for a skip or overwriting canonical data.
+These results establish layer replay only, not full-encoder or forecasting
+acceptance. No performance, GPU, or quantized parity claim is made.

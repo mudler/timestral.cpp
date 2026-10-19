@@ -88,8 +88,13 @@ static void sdpa_f32(ggml_tensor* dst,int ith,int nth,void*) {
 }
 ggml_tensor* attention_time(ggml_context* ctx,ggml_tensor* q,ggml_tensor* k,ggml_tensor* v,ggml_tensor* mask) {
     if(!q || !k || !v || !mask || !ggml_are_same_shape(q,k) || !ggml_are_same_shape(q,v) || mask->ne[0]!=q->ne[2] || mask->ne[1]!=q->ne[2] || mask->ne[2]!=q->ne[3])throw Error("invalid SDPA layout");
+    for(auto t:{q,k,v,mask})if(t->type!=GGML_TYPE_F32 || !ggml_is_contiguous(t))throw Error("invalid SDPA type/strides");
+    if(mask->ne[3]!=1)throw Error("invalid SDPA mask rank");
     ggml_tensor* args[]={q,k,v,mask};
     return ggml_custom_4d(ctx,GGML_TYPE_F32,q->ne[0]*q->ne[1],q->ne[2],q->ne[3],1,args,4,sdpa_f32,1,nullptr);
+}
+ggml_tensor* attention_variate(ggml_context* ctx,ggml_tensor* q,ggml_tensor* k,ggml_tensor* v,ggml_tensor* mask) {
+    return attention_time(ctx,q,k,v,mask);
 }
 ggml_tensor* swiglu(ggml_context* ctx,const Model& m,const std::string& base,ggml_tensor* x) {
     auto z=affine(ctx,m,base+"ffn_w12",x,m.config().mlp_bias);auto F=z->ne[0]/2;
