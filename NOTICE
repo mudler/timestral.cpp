@@ -25,3 +25,11 @@ Model weights
 Third-party code
   ggml, Copyright (c) the ggml authors, MIT licence:
   https://github.com/ggml-org/ggml (git submodule in third_party/ggml).
+
+  Adapted numerical helpers in src/layers.cpp:
+  SLEEF, Copyright Naoki Shibata and contributors 2010 - 2025,
+  Boost Software License, Version 1.0; see third_party/notices/SLEEF.txt.
+  PyTorch / ATen, BSD-style licence; complete upstream copyright notices,
+  conditions and disclaimer are in third_party/notices/PyTorch.txt.
+  Exact source revisions, scope and changes: third_party/notices/README.md.
+  These scoped notices do not select a project-wide code licence.

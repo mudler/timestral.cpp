@@ -63,6 +63,8 @@ ggml_tensor* affine(ggml_context* ctx,const Model& m,const std::string& base,ggm
     ggml_tensor* args[]={w,x,b};
     return ggml_custom_4d(ctx,GGML_TYPE_F32,w->ne[1],x->ne[1],x->ne[2],1,args,b?3:2,linear_f32,1,nullptr);
 }
+// Adapted from ATen SumKernel.cpp at 5c4886908584029761b579af026dcfb627c84070.
+// Copyright/licence and source scope: third_party/notices/PyTorch.txt and README.md.
 // Match the reference's F32 operation boundaries and cascade reduction.
 // Four independent eight-lane sums use a four-level cascade, as in the
 // reference CPU contiguous reduction. Scalar lanes keep this ISA-independent.
@@ -97,6 +99,8 @@ ggml_tensor* rms_norm(ggml_context* ctx,ggml_tensor* x,ggml_tensor* scale,float 
     uintptr_t bits=0;std::memcpy(&bits,&eps,sizeof(eps));auto data=reinterpret_cast<void*>(bits);ggml_tensor* args[]={x,scale};
     return ggml_custom_4d(ctx,GGML_TYPE_F32,x->ne[0],x->ne[1],x->ne[2],1,args,2,rms_f32,1,data);
 }
+// Adapted from ATen vec256_float.h at the same pinned revision above.
+// BSD-style terms: third_party/notices/PyTorch.txt; provenance: README.md there.
 // ATen's exp_u20 polynomial for full eight-lane flash-attention chunks.
 // Scalar tails use libm, just as the pinned CPU kernel does.
 static float attention_exp(float x) {
@@ -149,6 +153,11 @@ ggml_tensor* attention_time(ggml_context* ctx,ggml_tensor* q,ggml_tensor* k,ggml
 ggml_tensor* attention_variate(ggml_context* ctx,ggml_tensor* q,ggml_tensor* k,ggml_tensor* v,ggml_tensor* mask) {
     return attention_time(ctx,q,k,v,mask,0);
 }
+// Copyright Naoki Shibata and contributors 2010 - 2025.
+// Distributed under the Boost Software License, Version 1.0.
+// See third_party/notices/SLEEF.txt for the complete licence.
+// Adapted from SLEEF 906ca7512ee483296780a81a21b9ca715d40dfe1 xexpf.
+// Source scope and modifications: third_party/notices/README.md.
 // SLEEF F32 exp range reduction and polynomial, as used by ATen AVX2.
 // Verified against the pinned binary on 100,000 inputs and 417,792 SiLU
 // activations. Retain libm handling outside the normal exponent range.
