@@ -758,3 +758,76 @@ Scratch-GGUF boundary tests reject swapped modes, wrong dtypes, equal-size
 wrong shapes and provenance mismatches. Explicit real case selections reject
 unknown, duplicate and non-context cases rather than ignoring them.
 NaN raw head values are errors, never saturated into finite quantiles.
+
+### M5 native masks, rows, and covariate prediction
+
+`build_masks` builds boolean time/variate masks, key validity, sorted group
+indices, first-observation offsets, shared two-stream positions, and decoder
+block layout. It never reads a baseline. The mask gate opts into every decode
+block; other component runners retain their existing block selection.
+
+`assemble_rows` accepts canonical `[B,V,T]` targets, optional numeric rows,
+and double categorical codes. It sanitizes targets, forward-fills before the
+context cap, appends numeric then categorical rows per role, and pads context
+on the left and known future on the right. Numeric covariates use `~isnan`
+validity and finite saturation, unlike target `isfinite` validity. Category
+means use float64 NumPy pairwise summation and sequential bin accumulation.
+Distinct codes above 2^24 remain distinct until encoding. Multivariate targets
+retain raw-code float32 behavior. No ULP(1) exception is used.
+
+`PredictBlock::predict` accepts prepared packed context, group/role IDs, and
+optional known future. Both paths build masks natively. The covariate path
+embeds the entire window, keeps inactive decoder tokens, applies known-row
+scaling replacement, and selects forecast patches after computing the head.
+The anchor is the **post-known-row-replacement frame at context patch L-1**,
+not the final window frame. Known frames retain G1.3's approved reduction
+allowance; the prediction comparator uses explicit dumped F32 anchors.
+
+G5.4 uses the unchanged reviewed `normalized-v1` helper. Logs print both
+native and dumped row frames. All five established companion files are
+mandatory and their modes/provenance are validated; only the free-running
+F64 and F32-math predictions define the separately named normalized floor.
+Stored raw floors are neither reinterpreted nor modified. Deliberately
+corrupted native predictions must fail the same comparison. Known-covariate
+requests on an unsupported schedule return the reference message:
+`this checkpoint cannot condition on known-future covariates`.
+
+Reproduction (set `BUILD`, `SUITE`, and `TIMESTRAL_TEST_GGUF`):
+
+```sh
+export TIMESTRAL_TEST_TINY="$SUITE" TIMESTRAL_TEST_REAL_BASELINES="$SUITE"
+export TIMESTRAL_TEST_REAL_CASES=all
+cmake --build "$BUILD" -j2
+(ulimit -v 12582912; ctest --test-dir "$BUILD" -j1 \
+  -R 'test_masks|test_covariates|test_predict_block' --output-on-failure)
+```
+
+No Python runtime is linked or invoked by these native tests or prediction.
+The NumPy-derived reduction retains its upstream notice under
+`third_party/notices`; this does not select a project-wide licence.
+
+M5 validation covers all 28 tiny/tiny-bias and all 15 real manifest cases.
+Mask coverage includes 164 tiny and 36 real signed block selections (every
+block), with 1,328 and 300 exact comparisons respectively. Assembly coverage
+includes both signs of every case: 222 tiny and 117 real comparisons, including
+four tiny and two real categorical encoding calls at ULP(0). The component
+runner also reports traversed block selections for assembly, but assembly
+itself runs once per sign before decoding, not once per feedback block.
+
+The full real native prediction gate covers 15 cases / 30 block-zero signed
+selections. Subsequent final-binary covariate replay covers all six covariate
+cases / 12 selections; final tiny replay covers 28 cases / 56 selections,
+including 24 covariate selections. Later edits add admission checks, labels,
+provenance validation, and timing only; valid-input arithmetic is unchanged
+from the full real run. The already-passing full slow context-only replay is
+not repeated for diagnostic-only changes. Each final replay labels native
+comparisons separately from deliberately corrupted-output negative controls.
+
+Final M5 native verification passes 8/8 targeted CTests and 27/27 regression
+CTests, zero skips, plus the standalone loader. Tiny prediction's maximum
+error/tolerance is 0.618082; final real covariate prediction's is 0.772957.
+The unchanged strict extended encoder replay passes 6 selections, 144 local
+layers, and 294 comparisons (maximum ratio 0.670333). Its repeated error
+amplification report remains visible (one report, maximum adjacent 4.24367),
+not suppressed. Composite/time extensions pass 92/56 comparisons. All 215
+canonical suite GGUF checksums remain unchanged.

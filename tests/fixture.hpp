@@ -66,7 +66,7 @@ inline std::vector<Case> manifest(bool real) {
 #include <iostream>
 // Coverage is manifest-driven. A real subset must be an explicit comma-separated
 // list, never inferred from files (which may still be written by another process).
-inline int run_component(int argc,char** argv, const std::function<void(const Model&,Fixture&,const std::string&)>& check) {
+inline int run_component(int argc,char** argv, const std::function<void(const Model&,Fixture&,const std::string&)>& check, bool all_blocks=false) {
     bool real=argc>1 && std::string(argv[1])=="--real";
     auto specs=manifest(real);
     if(real) {
@@ -102,7 +102,7 @@ inline int run_component(int argc,char** argv, const std::function<void(const Mo
             for(auto pass:{"pos","neg"}) {
                 int64_t patches=(spec.horizon+m.config().patch_size-1)/m.config().patch_size;
                 int last=int((patches+m.config().block_size-1)/m.config().block_size)-1;
-                std::vector<int> ids{0};if(last>0)ids.push_back(last);
+                std::vector<int> ids{0};if(all_blocks){for(int k=1;k<=last;++k)ids.push_back(k);}else if(last>0)ids.push_back(last);
                 for(int id:ids) {check(m,f,std::string(pass)+".b"+std::to_string(id)+".");++blocks;}
             }
             ++cases;

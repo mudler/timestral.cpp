@@ -51,3 +51,13 @@ revision above). The cumsum traversal itself is the model's inward-to-outward
 quantile order. These are scalar C++ adaptations, not a project-wide licence.
 
 - https://github.com/pytorch/pytorch/blob/5c4886908584029761b579af026dcfb627c84070/aten/src/ATen/native/cpu/ReduceOpsKernel.cpp
+
+## NumPy (BSD 3-Clause)
+
+`src/numpy_sum.hpp` adapts the contiguous float64 `pairwise_sum` traversal
+from `numpy/_core/src/umath/loops_utils.h.src` (NumPy 2.5.4). The eight
+accumulator lanes, 128-element leaves, and aligned recursive split retain
+NumPy's evaluation order. C++ vectors replace strided NumPy dispatch.
+The copyright, conditions, and disclaimer are retained in `NumPy.txt`.
+
+- https://github.com/numpy/numpy/blob/v2.5.4/numpy/_core/src/umath/loops_utils.h.src
