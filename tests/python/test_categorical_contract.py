@@ -1,5 +1,7 @@
 """Exercise categorical contracts through the pinned, instrumented CPU producer."""
 from contextlib import ExitStack
+from pathlib import Path
+import sys
 import unittest
 from unittest.mock import patch
 
@@ -7,6 +9,7 @@ import numpy as np
 from timestral.config import TimestralConfig
 from timestral.model import TimestralModel
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'scripts'))
 import gen_reference_baseline as gen
 import baseline_contract as contract
 import baseline_io as bio
