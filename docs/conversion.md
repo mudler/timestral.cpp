@@ -160,7 +160,44 @@ but matching counts alone do not establish backend dispatch or justify a product
 The inspected Torch flash source calls `cpublas::gemm(Transpose, NoTranspose)` for QK with `(m,n,k)=(keys,queries,head_dim)`.
 It supplies actual Q/K token strides, scales/masks afterward, applies vector `exp_u20` plus scalar tails, then GEMM for values and final reciprocal scaling.
 The CPU BLAS wrapper can use MKLDNN or SGEMM before its fallback; this source-level path is not an observed internal microkernel trace.
-The next required evidence is an instrumented compiled GEMM witness with identical transpose flags, dimensions, strides, and dispatch settings.
+### Compiled backend witness
+
+Supported MKL verbosity on actual Torch flash calls identifies oneMKL SGEMM, not the fallback or oneDNN path, for these eight controls.
+Context QK is `SGEMM(T,N,8,8,64)` and value contraction is `SGEMM(N,N,64,8,8)`.
+Decoder QK is `SGEMM(T,N,9,1,64)` and value contraction is `SGEMM(N,N,64,1,9)`.
+The Q/K/V token leading dimension is 192 for 5M and 768 for 209M.
+The decoder query leading dimension normalizes to 64 when its query count is one.
+
+The float `cpublas::gemm` wrapper is not dynamically exported, but `sgemm_` is.
+A scratch compiled witness calls that actual libtorch-exported backend with the observed dimensions, transpose flags, and leading dimensions.
+It makes no production link or dependency change.
+The witness uses supplied F32 exp/sum intermediates from the earlier reconstruction for the value stage; those are not captured flash internals.
+With `MKL_DYNAMIC=FALSE`, verbosity reports `Dyn:0`, `NThr:1`, and `FastMM:1`, matching actual flash execution.
+The initial default-Dyn:1 run gives the same numerical results.
+
+| Control | Backend QK versus per-head Torch mm | Backend values plus reconstructed exp/sum versus stored flash |
+|---|---|---|
+| 5M positive context | 192/192 exact | 1536/1536 exact |
+| 5M negative context | 192/192 exact | 1536/1536 exact |
+| 5M positive decoder | 27/27 exact | 192/192 exact |
+| 5M negative decoder | 27/27 exact | 191/192; maximum `2.38419e-7` |
+| 209M positive context | 768/768 exact | 6144/6144 exact |
+| 209M negative context | 768/768 exact | 6144/6144 exact |
+| 209M positive decoder | 108/108 exact | 766/768; maximum `4.76837e-7` |
+| 209M negative decoder | 108/108 exact | 767/768; maximum `2.38419e-7` |
+
+The actual backend now corroborates the independent matrix-product QK witness for every control.
+It does not expose the proprietary microkernel's floating-point accumulation order.
+Context evidence supports a shape-generic QK arithmetic correction, but a production implementation still requires an independent mathematical derivation and witnesses.
+Decoder residuals cannot yet be assigned uniquely to exp, sum, or value normalization because reconstructed intermediates remain in that comparison.
+No best-match lane heuristic, MKL production dependency, or proprietary kernel copying is authorized.
+
+A direct experimental `mkl_set_dynamic` symbol call crashes before GEMM; its ABI was not verified and the failure remains a scratch-witness limitation.
+The successful bounded rerun uses the documented environment variable instead, without claiming an ABI diagnosis.
+The retained `libtorch_cpu.so` SHA-256 is `5acf62dcd9d367db4788122f8fefd506027ed5a7aec70467a7fffd08a97ad64c`.
+The successful witness executable SHA-256 is `c531e4937475a3b2de849ca373740b2314203c5c43dac8ab5b9760b60c207fa2`.
+Original native binaries and source hashes remain unchanged before and after the compiled probes.
+The next decision is whether to authorize a shape-generic independent arithmetic witness, not a runtime patch.
 No production arithmetic, floor, tolerance, or baseline changes follow these probes.
 A later correction needs independent shape-generic contraction witnesses, not a model-name branch or tolerance change.
 Pilot timings do not justify extrapolating the long multiblock cases; resolving parity precedes the full-profile cost decision.
