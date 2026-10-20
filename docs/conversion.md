@@ -126,7 +126,42 @@ An exact fully overridden layer output does not prove composition exactness: dow
 The recorded reference uses CPU flash SDPA on AVX2.
 The native shape is head dimension 64, three heads, eight context keys, and one decoder token.
 Context queries take the wide path; the one-token decoder takes the existing narrow contraction branch.
-The first arithmetic mismatch is localized to time SDPA, but its internal dot/softmax/value substep is not yet isolated.
+The first arithmetic mismatch is localized to time SDPA.
+A scratch substep witness further isolates context-query QK accumulation, with decoder details still unresolved.
+
+The witness loads exact layer-0 stored q/k after RoPE, v, and masks for 5M and 209M, positive and negative passes.
+Fresh Torch flash calls match all eight stored attention outputs byte for byte, separately for context and decoder queries.
+Torch is `2.14.1+cpu`, source `5c4886908584029761b579af026dcfb627c84070`, reporting AVX2.
+The probe computes per-head `torch.mm(q, k.T)` as a separate contraction witness.
+That matrix product is not a captured internal flash buffer; its equivalence must not be assumed for every execution shape.
+
+The scratch C++ modes hold scale, mask, exp/reduction, and reciprocal placement fixed:
+
+| Mode | QK source | Value contraction |
+|---|---|---|
+| 0 | Existing native dot-order reconstruction | Sequential FMA |
+| 1 | Per-head Torch matrix product | Sequential FMA |
+| 2 | Existing native dot-order reconstruction | Separate multiply/add |
+| 3 | Per-head Torch matrix product | Separate multiply/add |
+
+QK exact-count diagnostics always describe the mode-0 dots against Torch matrix products, even in replacement modes.
+For 5M context, those counts are 43/192 positive and 42/192 negative; maximum absolute difference is `3.05176e-5`.
+Mode 1 makes context outputs exact: 1536/1536 values in each 5M pass and 6144/6144 in each 209M pass.
+This demonstrates a sufficient QK-only replacement for context outputs without changing exp, sum, or value FMA.
+It does not prove the selected matrix-product API exposes flash's internal arithmetic.
+
+Decoder mode 1 remains inexact: 152/192 positive and 153/192 negative 5M values match.
+Mode 3 gives 192/192 positive and 191/192 negative matches; the negative maximum difference is `2.38419e-7`.
+The 209M decoder also remains slightly inexact under mode 3.
+Thus decoder arithmetic cannot be declared solved by choosing the best probe mode.
+A bounded dot-order enumeration finds exact context witnesses for four separate multiply/add lanes with pairwise reduction,
+but matching counts alone do not establish backend dispatch or justify a production branch.
+
+The inspected Torch flash source calls `cpublas::gemm(Transpose, NoTranspose)` for QK with `(m,n,k)=(keys,queries,head_dim)`.
+It supplies actual Q/K token strides, scales/masks afterward, applies vector `exp_u20` plus scalar tails, then GEMM for values and final reciprocal scaling.
+The CPU BLAS wrapper can use MKLDNN or SGEMM before its fallback; this source-level path is not an observed internal microkernel trace.
+The next required evidence is an instrumented compiled GEMM witness with identical transpose flags, dimensions, strides, and dispatch settings.
+No production arithmetic, floor, tolerance, or baseline changes follow these probes.
 A later correction needs independent shape-generic contraction witnesses, not a model-name branch or tolerance change.
 Pilot timings do not justify extrapolating the long multiblock cases; resolving parity precedes the full-profile cost decision.
 
