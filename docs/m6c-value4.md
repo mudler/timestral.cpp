@@ -94,3 +94,83 @@ TIMESTRAL_TEST_GGUF="$MODEL" "$BUILD/tests/test_forecast_determinism" --real-512
 | `native-512-1.json`, `native-512-6.json` | Warm diagnostic medians and samples |
 | `native-32k-1.json`, `baseline-32k-1.json` | Matched cold single-forecast probes |
 | `candidate-binaries.sha256`, `source-commit.txt` | Executable hashes and source pin |
+
+## Aggregate profile after four value accumulators
+
+A profile-only follow-up rebuilds implementation
+`8a83cb8564ce7e4c58b489d567272c834891f9f6` in Release mode with `-pg`
+for C/C++ and linking, unchanged floating-point flags, and `-j2`.
+One isolated cold 32768/1024 forecast at one thread completes in 56.335092
+seconds, with peak RSS 943927296 bytes and the unchanged output sum.
+It runs serially under 12 GiB and exits zero; source pins and binary hashes pass.
+
+| Symbol | Sampled self seconds | Share |
+|---|---:|---:|
+| `linear_packed` | 19.16 | 39.78% |
+| `attention_keys` | 11.31 | 23.48% |
+| `attention_values` | 6.67 | 13.85% |
+| Remaining SDPA body | 5.94 | 12.33% |
+| `detail::linear_f32` | 1.82 | 3.78% |
+
+Packed linear remains the largest individual helper; aggregate attention is
+49.66% of sampled self time. QK is now the largest attention helper.
+Packed-linear samples combine preparation and contraction. The remaining SDPA
+body includes softmax and tails, so its share is not a pure softmax measurement.
+No six-thread profile or full acceptance timing runs here.
+
+### Scratch-only attention phase timers
+
+A separate scratch copy adds steady-clock phase timers without changing
+arithmetic expressions or output paths. Its callback passes **9,360 exact
+oracle comparisons / 22,248,000 values**. The accepted runtime remains unchanged.
+Summing all 60 callbacks from one cold full-shape forecast gives:
+
+| Phase | Timed seconds |
+|---|---:|
+| QK, dot selection, scaling, mask, maximum | 33.907118 |
+| Softmax, sums, reciprocal | 19.723856 |
+| Value contraction and final multiplication | 24.296951 |
+
+The instrumented forecast takes **136.783942 seconds**, versus 56.335092 seconds
+in the gprof run and 49.551510 seconds in the earlier uninstrumented probe.
+This large discrepancy exposes instrumentation, code-layout, or environment
+distortion; the available evidence does not isolate its cause.
+Do not compare these absolute phase times with gprof self seconds or earlier
+phase runs. Do not treat them as latency baselines or acceptance measurements.
+The phase run confirms all phases execute, but does not justify a precise
+undistorted phase-cost ratio. The less intrusive gprof result remains the
+primary basis for selecting the next component.
+
+Evidence under `timestral-native/m6c-value4/profile-32k`:
+`configure.log`, `build.log`, `source-commit.txt`, `source-after.txt`,
+`binary.sha256`, `binary-after.log`, `native-32k.json`, `native-32k.log`,
+`native-32k.gprof`, `gmon.out`, and `layers-disassembly.txt`;
+plus `layers-timed.cpp`, `timed-build.log`, `timed-oracle.log`,
+`timed-oracle-phases.log`, `timed-32k.json`, `timed-32k.log`, and
+`phase-summary.json` for the scratch diagnostic.
+
+### Proposed next experiment, pending root approval
+
+Target packed linear's measured 39.78% with an explicit four-row microkernel.
+The current source uses runtime-count arrays for four accumulators and loops
+over `count` for every K step, even when four rows are available.
+Split the full four-row case into four named vector panel accumulators and
+four named running sums, with no runtime row-count loop inside K.
+Keep the existing path for incomplete row groups. Do not widen tiles, increase
+row count, change packing layout, or change thresholds in this experiment.
+
+Each named row accumulator must preserve ascending K FMA order, positive-zero
+panel initialization, separate F32 panel additions, and the final bias boundary.
+The proposed change adds no scratch, persistence, model ownership, or threading
+policy. Its hypothesis is improved register allocation and less inner-loop
+control, not a claim that the compiler currently spills every accumulator.
+Inspect disassembly and require exact optimized/fallback scalar-oracle checks,
+including four-row and callback-partition tails, before component/tiny gates,
+actual forecast determinism, warm 512, and one matched cold 32k comparison.
+
+A second independent candidate is callback-local key transposition for QK,
+whose strided loads remain a measured cost. That requires its own bounded
+packing lifetime, amortization, and exact branch design; do not bundle it.
+No next runtime experiment is implemented or authorized by this profile report.
+Neither a 39.78% component optimization alone nor the distorted timer shares
+establish the additional improvement needed for the overall 1.5x gate.
