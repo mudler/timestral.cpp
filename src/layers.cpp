@@ -2,12 +2,50 @@
 #include <cmath>
 #include <cstring>
 #include <algorithm>
+#include <memory>
+#include <limits>
+#include <new>
 #if !defined(TS_LINEAR_DISABLE_AVX2) && (defined(__x86_64__) || defined(__i386__)) && (defined(__GNUC__) || defined(__clang__))
 #include <immintrin.h>
 #define TS_LINEAR_AVX2 1
 #endif
 namespace ts {
 #ifdef TS_LINEAR_AVX2
+// Callback-local storage: one [K,8] tile, reused across all owned rows.
+// Allocation failure leaves the original path available without shared state.
+__attribute__((target("avx2,fma")))
+static bool linear_packed(const float* w,const float* x,const float* b,float* y,
+                          int64_t k,int64_t n,int64_t rows,int ith,int nth) {
+    if(k<192 || n<8 || rows<32 ||
+       uint64_t(k)>std::numeric_limits<size_t>::max()/(8*sizeof(float)))return false;
+    std::unique_ptr<float[]> packed(new(std::nothrow) float[size_t(k)*8]);
+    if(!packed)return false;
+    for(int64_t col=0;col+8<=n;col+=8) {
+        for(int64_t j=0;j<k;++j)for(int lane=0;lane<8;++lane)
+            packed[size_t(j)*8+lane]=w[(col+lane)*k+j];
+        for(int64_t row=ith;row<rows;row+=int64_t(4)*nth) {
+            const int count=int(std::min<int64_t>(4,(rows-1-row)/nth+1));
+            __m256 sum[4]={_mm256_setzero_ps(),_mm256_setzero_ps(),
+                           _mm256_setzero_ps(),_mm256_setzero_ps()};
+            for(int64_t start=0;start<k;start+=192) {
+                __m256 panel[4]={_mm256_setzero_ps(),_mm256_setzero_ps(),
+                                 _mm256_setzero_ps(),_mm256_setzero_ps()};
+                for(int64_t j=start;j<std::min(k,start+192);++j) {
+                    __m256 weight=_mm256_loadu_ps(packed.get()+j*8);
+                    for(int lane=0;lane<count;++lane)
+                        panel[lane]=_mm256_fmadd_ps(weight,
+                            _mm256_set1_ps(x[(row+int64_t(lane)*nth)*k+j]),panel[lane]);
+                }
+                for(int lane=0;lane<count;++lane)sum[lane]=_mm256_add_ps(sum[lane],panel[lane]);
+            }
+            for(int lane=0;lane<count;++lane) {
+                if(b)sum[lane]=_mm256_add_ps(sum[lane],_mm256_loadu_ps(b+col));
+                _mm256_storeu_ps(y+(row+int64_t(lane)*nth)*n+col,sum[lane]);
+            }
+        }
+    }
+    return true;
+}
 // Lanes are independent output columns, never partial K reductions. Weight
 // rows are K-contiguous, so gather the same K coordinate from eight rows.
 __attribute__((target("avx2,fma")))
@@ -44,10 +82,15 @@ void detail::linear_f32(ggml_tensor* dst,int ith,int nth,void*) {
     auto y=static_cast<float*>(dst->data);
     const int64_t k=weight->ne[0], n=weight->ne[1];
     const int64_t rows=ggml_nelements(dst)/n;
-    for(int64_t row=ith;row<rows;row+=nth) {
-        int64_t col=0;
+    bool packed=false;
 #ifdef TS_LINEAR_AVX2
-        if(__builtin_cpu_supports("avx2") && __builtin_cpu_supports("fma"))
+    if(__builtin_cpu_supports("avx2") && __builtin_cpu_supports("fma"))
+        packed=linear_packed(w,x,b,y,k,n,rows,ith,nth);
+#endif
+    for(int64_t row=ith;row<rows;row+=nth) {
+        int64_t col=packed?n/8*8:0;
+#ifdef TS_LINEAR_AVX2
+        if(!packed && __builtin_cpu_supports("avx2") && __builtin_cpu_supports("fma"))
             col=linear_columns(w,x+row*k,b,y+row*n,k,n);
 #endif
         for(;col<n;++col) {

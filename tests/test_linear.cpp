@@ -30,7 +30,7 @@ int main() {
     size_t cases=0,values=0;
     for(int k:{1,7,32,64,191,192,193,383,384,385,768,2048})
     for(int n:{1,7,8,9,17,64,768})
-    for(int rows:{1,3,17})
+    for(int rows:{1,3,17,31,32,33,34,35,36,39})
     for(int pattern=0;pattern<3;++pattern) {
         std::vector<float> w(k*n),x(k*rows),b(n),y(n*rows+2,-12345);
         auto fill=[&](std::vector<float>& v) {
@@ -42,6 +42,7 @@ int main() {
             }
         };
         fill(w);fill(x);fill(b);
+        const auto saved_w=w,saved_x=x,saved_b=b;
         for(bool bias:{false,true}) {
             auto expected=oracle(w,x,bias?b.data():nullptr,k,n,rows);
             ggml_tensor wt{},xt{},bt{},dst{};
@@ -52,7 +53,10 @@ int main() {
                 std::fill(y.begin()+1,y.end()-1,-12345);
                 for(int ith=0;ith<threads;++ith)ts::detail::linear_f32(&dst,ith,threads,nullptr);
                 if(std::memcmp(expected.data(),y.data()+1,expected.size()*sizeof(float)) ||
-                   y.front()!=-12345 || y.back()!=-12345) {
+                   y.front()!=-12345 || y.back()!=-12345 ||
+                   std::memcmp(w.data(),saved_w.data(),w.size()*sizeof(float)) ||
+                   std::memcmp(x.data(),saved_x.data(),x.size()*sizeof(float)) ||
+                   std::memcmp(b.data(),saved_b.data(),b.size()*sizeof(float))) {
                     std::cerr<<"exact parity failed K="<<k<<" N="<<n<<" rows="<<rows
                              <<" pattern="<<pattern<<" bias="<<bias<<" threads="<<threads<<'\n';return 1;
                 }
