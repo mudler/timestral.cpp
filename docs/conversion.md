@@ -228,6 +228,41 @@ A future uniform value-contraction accuracy experiment would require a separate 
 It must preserve all rows, preprocessing, QK policy, and other attention boundaries, and must stop if any existing strict gate fails.
 No such experiment or remaining-case generation accompanies this localization.
 
+### Known-covariate preparation root cause
+
+The next bounded diagnostic confirms the complete 3x864 pre-scaling value buffer is byte-identical to stored `scale.in`.
+The observation mask is constructed from the unchanged stored context/future masks; no cap, padding, slice, or layout discrepancy is found.
+Replaying pinned Torch `instance_norm_stats` on that buffer reproduces stored known-row scaled values exactly.
+
+The first mismatch is the numeric known-row F32 reduction, not causal prefix scaling.
+Reference `instance_norm_stats` computes F32 mask counts, weighted sums, centered squares, and square sums before division and sqrt.
+Native `instance_norm_stats` currently widens weighted and square sums to sequential binary64, then casts back to F32.
+For numeric row 1, Torch weighted sum is `-26.33343505859375`; native widened sum rounds to `-26.33344268798828`.
+This yields the observed location difference.
+For negative indicator row 2, the weighted sum is exact but Torch square sum is `215.99542236328125`,
+versus native widened `215.99537658691406`, producing the observed scale difference.
+Negative indicator values are 0/-1, so this mirrored row correctly does not use the 0/1 bypass.
+
+A scratch reduction witness follows `SumKernel.cpp` at Torch `5c4886908584029761b579af026dcfb627c84070`.
+The contiguous inner-sum path uses four independent eight-lane F32 partial sums and four cascade levels.
+Its level power is `max(4, ceil_log2(vector_count/4)/4)`; completed groups promote through the cascade in source order.
+Remaining vectors join partial zero; partial groups combine in ascending order, then scalar tails precede ascending lane accumulation.
+For length 864 and element stride four bytes, there are 108 vectors and 27 four-vector groups.
+This is a shape-generic operation tree, not a length-864 branch or NumPy pairwise sum.
+The scalar C++ witness reproduces Torch sums, locations, square sums, and scales for all three rows exactly.
+`numpy_sum.hpp` implements a different NumPy float64 pairwise algorithm and is not the appropriate replacement.
+
+A scratch causal intervention supplies stored reference-scaled patch features only, then uses native projection, encoder, head, and unscale.
+The unchanged full-row metric passes at ratio `0.954023177`, versus original `1.03025702`.
+Its worst row remains the numeric known covariate, error `1.244131083e-5`; all three rows remain evaluated.
+This is a diagnostic intervention, not an allowed production dependency on reference arrays.
+
+The supported correction proposal is to reproduce the pinned contiguous F32 reduction order in `instance_norm_stats` only.
+Preserve its F32 subtraction, masking, square, division, sqrt, binary detection, and affine boundaries.
+Do not change causal float64 prefix scaling, QK, value contraction, floors, or tolerances.
+Implementation still requires separate approval, generic reduction-length/tail/adversarial tests, and 209M/tiny regressions.
+No production fix accompanies this root-cause record.
+
 ### Scratch-only uniform binary64 QK experiment
 
 A separately authorized accuracy experiment changes only QK accumulation in an isolated `2a687ab` source tree.
