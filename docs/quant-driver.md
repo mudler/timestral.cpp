@@ -258,3 +258,36 @@ The native driver, protocol, metric/fixture modules, public CLI/C ABI, and
 inference code remain unchanged. Performance and full quantization acceptance
 remain pending. Publication uses same-directory hard-link/no-overwrite semantics;
 adversarial filesystem races and power-loss directory durability are not proven.
+
+### Canonical two-case F32 producer execution
+
+A separately authorized end-to-end run executes canonical **uni_short and
+known_cov** through the reviewed F32 driver, one process per case, serial and
+single-threaded under the hard 12 GiB guard. Producer source matches `a733de2`;
+the existing executable matches the reviewed driver pin. No rebuild occurs.
+The resulting run index declares `development-f32-record-v1`, `scoring=false`,
+and the two canonical identities. This supersedes the earlier producer execution
+coverage gap for these two cases only, not the remaining 77 or reduced formats.
+
+An independent artifact verifier reconstructs both fixtures and checks exact
+request payload bytes, including NaN bit patterns and supplied covariates,
+all fixed protocol options, canonical case/input/truth associations, and each
+pickle-free NPZ array against fixture truth/inputs or the native binary response.
+It completes **16 independent array-byte checks across 2 items**. Output shapes
+are `[2,1,96,21]` and `[1,1,64,21]`. NPZ levels/forecasts/anchors match native
+responses exactly; audit array hashes agree. The run index publishes after both
+item audits, with no staging remnants. Truth is absent from request descriptors.
+
+Actual model, executable, producer, protocol, fixture/metric/generator sources,
+and case specifications retain their before/after hashes. Native responses
+carry the expected runtime base `cd9097a`, actual source-snapshot identity,
+model/executable hashes, request hash, and canonical item IDs. Native anchors
+remain F32-owned and associated only with that model hash.
+
+Evidence under `timestral-native/m7-producer/canonical-e2e`:
+`producer-pinned.py`, `before.json`, `after.json`, `producer.log`,
+`producer.stderr`, `verify.py`, `verification.log`, and `records/` containing
+requests, binary results, NPZs, item audits, and final index.
+No scoring manifest, six-format identities, quality PASS, complete 79-item
+execution, performance benchmark, or model conversion is produced. This is
+bounded canonical F32 producer transport evidence, not M7 acceptance.
