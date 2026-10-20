@@ -358,3 +358,98 @@ counters, `source-pins.json`, `baseline-32768-1.json`,
 `candidate-32768-1.json`, `baseline-32768-6.json`, corresponding process logs,
 per-configuration before/after hash JSON and host JSON, `completed-summary.json`,
 and `interrupted.txt`. No new attempt or optimization follows this report.
+
+## Exact-keypack aggregate profile after screened one-thread evidence
+
+A separate profile-only build uses exact implementation commit
+`35fdc68222548919fdfe2478b7328520ddb5e8a8`, not later reduced-format/runtime
+changes. Release adds only -pg to C/C++ and executable linking; existing F32
+contraction flags remain unchanged. Hard 12 GiB and -j2 apply throughout.
+Three quiet admission samples pass before the single cold 32768/1024,
+one-thread, warmup-zero/repeat-one forecast.
+
+The diagnostic completes in **42.543720 seconds**, peak RSS **944275456 bytes**,
+with 99% process CPU, 42.24 user + 0.17 system seconds, exit zero.
+It is a sampled profile, not a retention or formal acceptance timing.
+Fresh immediately-before/after model/executable SHA256 checks pass, along with
+source/vendor archive and profiling binary checks.
+
+| Symbol | Sampled self seconds | Share |
+|---|---:|---:|
+| `linear_packed` | 17.10 | 49.57% |
+| `attention_packed_keys` | 4.38 | 12.70% |
+| Remaining `sdpa_impl` | 4.33 | 12.55% |
+| `attention_values` | 4.27 | 12.38% |
+| `detail::linear_f32` | 1.64 | 4.75% |
+
+The packed-linear helper is now nearly half of sampled self time; aggregate
+attention remains material at approximately 37.63%. The SDPA body includes
+packing preparation, softmax, and scalar paths; it must not be labeled pure
+softmax. Shares omit attribution uncertainty from libraries and profiling.
+The remaining one-thread gap is not solved by six-core parallelism.
+Even eliminating a 49.57% component gives only about 1.98x ideal aggregate
+speedup, barely the roughly 1.96x still required by the qualified 42.25-second
+warm diagnostic versus the 21.57-second gate. A practical improvement needs
+multiple costs addressed; no single-kernel success is assumed.
+
+Current profiling-object disassembly confirms four independent row FMA chains
+with dynamic count comparisons, and stack traffic in panel/tail handling.
+That structure is not a new mandate to retry the reverted explicit-row4 change.
+Neither instruction counts nor stack references prove the dominant cycle cost.
+No runtime optimization accompanies this profile.
+
+### Proposed next bounded experiment, pending root approval
+
+Test a different layout/reuse hypothesis: **two adjacent eight-column packed
+tiles processed together**, retaining the current maximum four independent input
+rows. Pack `[K,16]` instead of `[K,8]` and use two AVX vectors per row.
+A query/input scalar broadcast can then feed both output vectors, reducing input
+reload/broadcast/address work per output and increasing independent FMA chains.
+The transpose preparation still reads/writes every weight once; callback-local
+scratch doubles from 8*K to 16*K floats (128 KiB at K=2048).
+
+This is not the explicit-row4 experiment: it changes output width and reuse,
+not merely names/unrolling for the same four-row/eight-column computation.
+It must retain ascending K order in each output lane, positive-zero 192-wide
+panel initialization, separate F32 panel additions, and final bias boundaries.
+Keep the existing eight-column path for column tails, incomplete row handling,
+small-shape eligibility, allocation fallback, and all attention/thread policy.
+No persistent weight cache or K reduction splitting is proposed.
+
+The key risk is register pressure: four rows times two panel vectors already
+requires eight vector accumulators, plus running sums and operands. This may
+spill and lose. Inspect candidate assembly and reject if exact parity or actual
+end-to-end improvement fails. Do not bundle different row counts, thresholds,
+persistent packing, or attention changes. A bounded preliminary variant can
+limit the widened path to two rows if root chooses that instead, but those
+are distinct experiments, not a silent parameter sweep.
+
+Require independent scalar-oracle cases around 15/16/17 output columns,
+191/192/193 K, row thresholds/tails, bias and adversarial inputs; forced fallback;
+component/tiny parity; actual 1/6-thread forecast determinism; and screened
+matched uninstrumented diagnostics before retaining anything.
+The alternative is further attention reuse, but it should follow a separately
+measured proposal rather than assuming packed QK still dominates.
+
+### Future six-thread measurement qualification (approved methodology)
+
+Before any separately authorized benchmark, require three quiet snapshots
+20 seconds apart (load1<12, pressure avg10<10), bounded to ten minutes.
+During six-worker execution, record global pressure/load without automatic
+rejection solely from those values: the benchmark's own workers contribute.
+Qualification also considers process CPU/wall, per-thread runnable behavior,
+cgroup throttling deltas, frequency readings, unrelated runnable consumers,
+and post-run recovery. There is no universal six-thread CPU-utilization cutoff.
+Preserve all timed samples and state uncertainty explicitly.
+This resource policy changes no numerical tolerance or formal latency gate.
+Historical retention-3 six-thread invalid status remains unchanged and cannot
+be retroactively promoted into a valid matched baseline. No new retention run
+is authorized or performed by this documentation/profile task.
+
+Evidence under `timestral-native/m6c-keypack/profile-retention`: pinned source
+and vendor archives, `prepared-pins.json`, `vendor-verification.json`,
+`configure.log`, `build.log`, `layers-disassembly.txt`, screening/host snapshots,
+`native-32k.json`, `native-32k.log`, `native-32k.gprof`, `gmon.out`,
+`build-before.sha256`, `build-after.log`, `run-before.sha256`, and
+`run-after.log`. The archived vendor was verified against e705c5fe; any outer
+Git commit in archive configure metadata is not its source identity.
