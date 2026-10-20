@@ -87,6 +87,49 @@ Use the Hub ID plus exact revision with the prepared offline cache to preserve p
 Keep partial/subset diagnostics visible; an external audit must establish full 13-case coverage.
 Local task authorization does not establish revenue eligibility or publication rights; the owner remains responsible for those licence conditions.
 
+### Executed pilot: HOLD at strict M6b
+
+The isolated reviewed F32 binaries convert the checkpoint to 78 F32 GGUF tensors without model-specific changes.
+The byte checker passes all 75 source tensors; the RoPE preview has zero numerical differences across 13,452,288 values.
+The converted GGUF SHA-256 is `c320276d8db95fb72fe5f4e043147e29142a1bf197c1b45daf6736780f6736ed`.
+Source revision, weights hash, and licence text match the downloaded snapshot.
+
+All five `uni_one_patch` modes complete under 12 GiB, with the all-eight-layer scratch profile.
+Their wall times are 4.94, 3.77, 4.30, 4.57, and 3.67 seconds in mode order.
+Peak RSS ranges from 356,080 to 439,628 KiB; the five modes total 21.25 seconds.
+Artifacts, including the floor summary, occupy 16,782,720 bytes.
+The explicit-case checker passes with its PARTIAL label intact.
+Floors cover 360 float tensors, including 316 teacher-forced floors and 230 caps; no floor exceeds its cap.
+
+Strict M3 passes 16 local layers and 34 comparisons over both passes, with no missing layers.
+It reports one repeated amplification streak and maximum adjacent amplification 21.021; retain that warning.
+Strict M6b fails its first positive teacher-forced prediction before completing any block/final comparisons.
+Normalized error is `2.24465652e-6`, tolerance `2.09746792e-6`, ratio `1.07017442`.
+No tolerance, floor, reference artifact, or runtime changes follow this failure.
+The remaining 12 cases do not run.
+
+Boundary diagnostics use source 0 = stored F32 encoder output, source 1 = native encoder on stored `tf.in`,
+and source 2 = native encoder on native preparation.
+For the positive pass, native head/monotone/unscale ratios are 0.356725, 1.056552, and 1.070174 respectively.
+Stored raw-head output through native monotone/unscale passes at ratio 0.102058.
+Thus upstream encoder drift is sufficient to reproduce the failure; the head-only threshold is not established as its cause.
+
+Per-layer diagnostics pass stored F32 inputs at each named boundary.
+`Encoder::boundary` reports the computed operation output before substituting its stored override downstream.
+Across both passes, the only nonzero independently teacher-forced boundaries are the eight time-attention SDPA outputs per pass.
+Layer-0 positive SDPA differs in 949/1728 values, maximum absolute difference `9.53674e-7`.
+Its norms, QKV, q/k/v, q/k after RoPE, gate, output projection, and MLP are exact on their own stored inputs.
+The corresponding negative SDPA differs in 981/1728 values, maximum `1.43051e-6`.
+The singleton variate SDPA boundaries are exact.
+An exact fully overridden layer output does not prove composition exactness: downstream overrides deliberately remove upstream error.
+
+The recorded reference uses CPU flash SDPA on AVX2.
+The native shape is head dimension 64, three heads, eight context keys, and one decoder token.
+Context queries take the wide path; the one-token decoder takes the existing narrow contraction branch.
+The first arithmetic mismatch is localized to time SDPA, but its internal dot/softmax/value substep is not yet isolated.
+A later correction needs independent shape-generic contraction witnesses, not a model-name branch or tolerance change.
+Pilot timings do not justify extrapolating the long multiblock cases; resolving parity precedes the full-profile cost decision.
+
 The [pinned licence](https://huggingface.co/mistralai/Timestral-5M/blob/bdd20cfc15a3fea0e4cb5ccef37f8d3ca7aa335f/LICENSE)
 is titled "Modified MIT License", with attribution "2026 - Mistral AI".
 It requires copies or substantial portions of the Model to include the attribution and permission notices.
