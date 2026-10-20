@@ -31,7 +31,9 @@ Empty coverage fails; the future runner must require exactly the 79 frozen ident
 They compare input bytes with a separately extracted original generator body and check future independence.
 They also check known-bad metrics, zero denominators, aggregation statuses, and error-match coverage HOLD.
 These tests are preparation, not M7 numerical acceptance.
-The model runner, CLI transport, native anchor extraction, separate suite orchestration, and acceptance report remain unimplemented.
+The model runner, CLI transport, and native anchor extraction remain unimplemented.
+`eval_quant.py` now orchestrates recorded-output validation, per-row scoring, separate suite summaries, and numerical checks.
+Its unit tests use explicitly mocked small fixtures, not model outputs or milestone evidence.
 
 ## Scope and invariants
 
@@ -46,6 +48,56 @@ Use Timestral-209M for quantization evaluation, including K-quants.
 Reject rows incompatible with the requested quantization block size.
 Do not pad dimensions, change runtime dimensions, or silently retain incompatible allowlisted weights.
 The B.4 allowlist and its explicit F32 exclusions still apply.
+
+## Recorded-output scoring protocol: `quant-record-v1`
+
+`eval_quant.py --manifest FILE --report FILE` reads records only; it never launches a model or public forecast command.
+Exit codes are 0 for recorded numerical checks passing, 1 for FAIL/HOLD, and 2 for invalid input or arguments.
+A passing report is not independent proof of model execution or milestone acceptance.
+The future native driver remains responsible for truthful model/source identities and exact anchor extraction.
+
+The JSON manifest has exactly these fields:
+
+- `version`: `quant-record-v1`.
+- `fixture_version`: `c2-truth-v1`.
+- `options`: exactly `quant_fixtures.OPTIONS`, including explicit resolved forecasting options.
+- `source_sha256`: the current five source/specification hashes emitted by `make_fixture`.
+- `driver`: exactly `source_sha256` (64 lowercase hex characters) and `runtime_commit` (40 lowercase hex characters).
+- `models`: exactly the six format names `f32`, `f16`, `q8_0`, `q6_k`, `q5_k`, `q4_k`.
+  Each model has `sha256`, `hf_revision`, and `reference_sha`; the latter two match the pinned 209M identities.
+- `items`: exactly the 79 frozen case identities, once each, in any order.
+
+Each item has exactly `id`, `case_sha256`, `input_sha256`, `truth_sha256`, `npz`, `arrays`, `anchor_model_sha256`, and `outputs`.
+The item provenance matches a freshly constructed in-memory fixture; the scorer checks every declared hash against that fixture.
+`npz` is a sibling basename, never a path outside the manifest directory.
+Load it with `allow_pickle=False` and reject undeclared arrays.
+Each `arrays` entry describes one NPZ key with exactly `dtype`, `shape`, and `sha256`.
+Hash dtype, shape, and contiguous bytes with `quant_fixtures.array_hash`.
+Use little-endian F32 arrays and little-endian F64 quantile levels.
+
+Every item stores `context` `(B,V,T)`, `truth` `(B,V,H)`, and `levels` `(Q)`.
+Context and truth match the fixture byte for byte, including context NaN locations.
+Levels equal the pinned 209M levels: 0.01, 0.05, 0.1 through 0.9 by 0.05, 0.95, 0.99.
+Each `outputs` map has all six formats.
+A forecast record is exactly `{"status":"forecast"}` and requires `forecast_FORMAT` `(B,V,H,Q)`.
+Forecasts must be finite and nondecreasing along quantiles.
+An error record has exactly `status`, `type`, `message`, and `stage`; status is `expected-error` or `error`.
+These error details are driver assertions, not independent verification of the reference's expected error.
+A match requires every field to equal the F32 expected-error record.
+Matching errors remain coverage gaps and HOLD numerical acceptance.
+
+When F32 forecasts exist, store only one pair of F32 `anchor_loc` and `anchor_scale` arrays, both `(B,V)`.
+Associate them through `anchor_model_sha256`, which must equal the F32 model hash, never a quantized model hash.
+No quantized-anchor keys are permitted.
+When F32 has no forecast, use null anchor association and omit both anchor arrays.
+Do not score any format without its F32 forecast and shared anchors.
+
+The report preserves per-row metrics, item identities, named coverage gaps, and all three suite summaries: C.2, synthetic, and overall.
+Missing required identities invalidate the manifest; declared error records produce HOLD rather than invented numeric values.
+Use the approved F16/Q8 bounds and overall strict normalized-mean ordering; MASE has no numerical bound.
+Reports distinguish checked array/fixture hashes from asserted driver/model provenance.
+Write reports through a temporary file in the destination directory, then atomically replace the destination.
+Serialize tagged nonfinite results with strict JSON; never emit NaN or Infinity literals.
 
 ## Held-out truth: `c2-truth-v1`
 
