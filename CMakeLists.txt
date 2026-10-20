@@ -47,6 +47,7 @@ set(TIMESTRAL_SRC
     src/model_loader.cpp
     src/scaler.cpp
     src/refine.cpp
+    src/forecaster.cpp
     src/masks.cpp
     src/covariates.cpp
     src/layers.cpp
@@ -58,7 +59,7 @@ set(TIMESTRAL_SRC
 # PyTorch materializes multiply/add separately at the scaler float32 boundaries.
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-  set_source_files_properties(src/refine.cpp src/scaler.cpp src/layers.cpp src/head.cpp src/covariates.cpp PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
+  set_source_files_properties(src/forecaster.cpp src/refine.cpp src/scaler.cpp src/layers.cpp src/head.cpp src/covariates.cpp PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
 endif()
 
 if(TIMESTRAL_SHARED)
@@ -67,7 +68,7 @@ else()
   add_library(timestral STATIC ${TIMESTRAL_SRC})
 endif()
 set_target_properties(timestral PROPERTIES POSITION_INDEPENDENT_CODE ON)
-target_include_directories(timestral PUBLIC include PRIVATE src)
+target_include_directories(timestral PUBLIC include $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>)
 target_compile_definitions(timestral PRIVATE TIMESTRAL_VERSION="${TIMESTRAL_VERSION}")
 target_link_libraries(timestral PUBLIC ggml)
 

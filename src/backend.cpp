@@ -12,6 +12,9 @@
 #endif
 
 namespace ts {
+namespace { thread_local int execution_threads = 1; }
+void set_cpu_threads(int n) { if(n<1 || n>1024)throw Error("invalid CPU thread count"); execution_threads=n; }
+int cpu_threads() { return execution_threads; }
 
 MappedFile::MappedFile(const std::string& path) {
 #if !defined(_WIN32)
@@ -110,6 +113,7 @@ void GraphRunner::upload(ggml_tensor* t, const std::vector<float>& values) {
     ggml_backend_tensor_set(t, values.data(), 0, ggml_nbytes(t));
 }
 void GraphRunner::compute() {
+    ggml_backend_cpu_set_n_threads(backend_, cpu_threads());
     if (!allocated_ || !graph_ || ggml_backend_graph_compute(backend_, graph_) != GGML_STATUS_SUCCESS) throw Error("graph compute failed");
     computed_ = true;
 }

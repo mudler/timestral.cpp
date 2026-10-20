@@ -73,3 +73,8 @@ add_test(NAME test_predict_block_209m COMMAND test_predict_block --real)
 ts_add_test(test_refine)
 add_test(NAME test_refine_units COMMAND test_refine --unit)
 add_test(NAME test_refine_209m COMMAND test_refine --real)
+
+ts_add_test(test_forecast)
+add_test(NAME test_forecast_units COMMAND test_forecast --unit)
+add_test(NAME test_forecast_209m COMMAND test_forecast --real)
+set_tests_properties(test_forecast_209m PROPERTIES LABELS "slow")

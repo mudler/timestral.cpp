@@ -25,6 +25,10 @@ private:
     bool heap_ = false;   // fallback: file read into aligned memory
 };
 
+// Per-calling-thread CPU execution setting; affects existing runners at compute time.
+void set_cpu_threads(int threads);
+int cpu_threads();
+
 // CPU backend (the only backend in M0b).
 ggml_backend_t backend_init_cpu();
 

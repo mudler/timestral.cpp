@@ -903,3 +903,35 @@ checksums remain unchanged. TDD starts with a compiled stub failing
 Existing M3/M4/M5 arithmetic sources are unchanged; the slow real encoder
 is deliberately not rerun. Full AR decode and end-to-end acceptance remain
 M6b work, not evidence claimed by this isolated gate.
+
+## M6b: native autoregressive forecast
+
+The native C++ API and comparison contracts are documented in `forecast.md`.
+All inputs and reference companions remain the accepted A1 suite. No floor
+artifacts or tolerance factors change. Both signs and every block are checked.
+G6.2 uses dumped contexts and teacher-rerun `block_refined` for combined
+prediction/refinement. G6.3 uses free-running companions. Final forecasts use
+the original positive-pass target frame; all block frames are explicit in logs.
+Stored raw-space floor keys are not normalized floors.
+
+Candidate verification before the pinned final replay:
+
+| Scope | Cases | Teacher blocks | Free blocks | Finals | Comparisons | Worst error/tolerance |
+|---|---:|---:|---:|---:|---:|---:|
+| tiny + tiny-bias, complete | 28 | 164 | 164 | 28 | 684 | 0.618082 |
+| 209M focused `long_h,long_h_known` | 2 | 10 | 10 | 2 | 42 | 0.729541 |
+
+All these runs return zero, with no missing cases or skipped errors. The focused
+real run also checks I6.4–I6.6. Its original invariant probe uses a full trained
+block plus a remainder and costs about 20 minutes before the first case line.
+The final test retains multiblock coverage with two one-patch blocks instead,
+prints each invariant call, and prints each native/teacher block before compute.
+Corrupt comparator controls are labelled `G6_NEGATIVE_EXPECT_FAIL` followed by
+`G6_NEGATIVE_REJECTED`; their FAIL lines are required negative evidence, not
+failed parity gates. The candidate fast CTest selection passes 17/17 tests.
+
+The final replay must use an archived executable built from a committed source
+revision, with source/archive/binary SHA-256 recorded before and after replay.
+The test logs contain every per-case, per-sign, per-block error, floor, tolerance,
+and frame. Completion of the full 15-case 209M replay is a separate requirement;
+the focused result alone does not establish M6b acceptance.
