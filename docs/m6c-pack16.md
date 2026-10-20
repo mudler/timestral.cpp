@@ -68,3 +68,24 @@ Scratch evidence under `timestral-native/m6c-pack16`: `base.tar`, `ggml.tar`,
 `baseline-1.json`, `baseline-1.log`, `baseline-1-before.json`,
 `baseline-1-after.json`, `baseline-1-host.json`, and `interrupted.txt`.
 The tested candidate binary remains in scratch, not the retained runtime.
+
+Post-decision clarification: the failed one-thread criteria are **host load and
+pressure**, not process CPU availability: the completed process receives 98% CPU,
+above its 95% resource-quality threshold. Load1 samples 13.16/13.29/12.12 exceed
+12; pressure peaks at 29.60%, exceeding 10. No point-in-time utilization replaces
+whole-process accounting. The resource rejection is not a kernel verdict.
+
+The candidate base is aggregate `74a2893`, whereas the retained baseline CLI is
+older keypack runtime `35fdc68`. Explicit source comparison confirms packed-linear,
+linear-callback, and attention kernel sections are identical before the experiment;
+`baseline-kernel-identity.json` records their hashes. This does not claim identical
+whole graph/build metadata or executable bytes: later reduced-format dispatch and
+transport additions exist in the aggregate. Since no candidate measurement runs,
+no performance comparison across those executables is asserted. A future retry
+would require root approval and a deliberately matched graph/build baseline.
+
+The runtime was already conservatively reverted before root permitted an
+alternative correctness-WIP retention. No regression or intrinsic slowdown is
+claimed. The exact correctness-verified candidate remains reconstructable through
+its pinned archive/patch/binary, without changing the retained production kernel.
+No retry occurs. All final artifact/CLI/test/model hashes remain unchanged.
