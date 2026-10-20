@@ -153,3 +153,69 @@ review of the short-shape trade-off. Do not claim an across-shape speedup.
 Artifacts: `cooled-{baseline,candidate}-512-{1,6}.json` and matching `.log`
 files under the experiment scratch directory. No runtime changes accompany
 this final control or documentation update.
+
+## Aggregate packing profile
+
+A profile-only follow-up rebuilds documentation HEAD
+`a020c3c65a950aea30b2921b7c75ec5aed1e10e6`, whose implementation is
+`5082a9b7a0442e22000b6e8fd9f3fdb621b8002a`.
+The Release executable uses `-pg` for C/C++ and linking, unchanged floating-point
+flags, and a serial `-j2` build. One isolated CPU forecast runs under 12 GiB,
+at context 32768, horizon 1024, one thread, zero warmups, and one repeat.
+It completes in 71.619037 seconds with peak RSS 944123904 bytes, exiting zero.
+The output sum remains `125.490760441`. Source pins and binary hashes pass.
+This cold instrumented run is not a latency baseline or acceptance median.
+
+| Symbol | Sampled self seconds | Share |
+|---|---:|---:|
+| `linear_packed` | 20.74 | 33.71% |
+| `attention_values` | 15.06 | 24.48% |
+| `attention_keys` | 13.88 | 22.56% |
+| Remaining SDPA body | 6.73 | 10.94% |
+| `detail::linear_f32` | 1.76 | 2.86% |
+| `linear_columns` | 0.14 | 0.23% |
+
+The largest individual helper remains packed linear, but aggregate attention
+now accounts for approximately **57.98%** of sampled self time.
+The linear packing helper includes tile preparation and contraction; this run
+does not separate those costs. The SDPA body includes softmax and scalar tails;
+its whole share must not be labeled softmax. Values and QK both remain material.
+Sampling and instrumented library boundaries limit exact wall-time attribution.
+Frequency differences also prevent comparing absolute sampled seconds between
+profiles as kernel benchmark results. No six-thread profile is measured.
+
+Evidence under `timestral-native/m6c-pack/profile-32k`:
+`configure.log`, `build.log`, `source-commit.txt`, `source-after.txt`,
+`binary.sha256`, `binary-after.log`, `native-32k.json`, `native-32k.log`,
+`native-32k.gprof`, `gmon.out`, and `layers-disassembly.txt`.
+No accepted runtime or test source changes accompany this profile.
+
+### Next proposed experiment, pending root approval
+
+Target the measured value helper with **four independent eight-dimension
+accumulators**, covering 32 adjacent head dimensions in one ascending-key loop.
+The current helper completes one eight-dimension block before revisiting all
+keys for the next block. The proposed loop broadcasts each probability once,
+loads four adjacent value vectors, and updates four independent FMA chains.
+This exposes independent instruction chains and touches contiguous value data
+before advancing to the next key. No key reduction is split or reordered.
+
+Each output dimension must retain the exact ascending-key FMA sequence and
+separate reciprocal multiplication. Keep the existing eight-dimension helper
+for dimension tails, scalar tails, narrow heads, QK, softmax, and masking.
+There is no packing buffer or new ownership: four vector accumulators require
+128 bytes of logical register state, with no persistent cache or graph changes.
+Do not bundle query batching, QK packing, or linear changes into this experiment.
+
+Require expanded scalar-oracle coverage around head dimensions 31/32/33 and
+63/64/65, key tails, split execution branches, adversarial finite values, and
+forced fallback. Then run all component/tiny gates, actual forecast determinism,
+warm isolated 512, and one matched cold 32k probe before retaining a candidate.
+Expected benefit is a hypothesis; no speedup follows from profile share alone.
+
+Both linear and attention still need attention for the overall target.
+Even eliminating the sampled value helper cannot by itself bridge the current
+56.13-second cold result to the 21.57-second warm acceptance limit.
+After a bounded value-kernel experiment, reprofile before selecting between
+QK cache blocking and further linear register reuse. No next runtime experiment
+is implemented or authorized by this profile-only report.
