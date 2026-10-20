@@ -197,6 +197,37 @@ The successful bounded rerun uses the documented environment variable instead, w
 The retained `libtorch_cpu.so` SHA-256 is `5acf62dcd9d367db4788122f8fefd506027ed5a7aec70467a7fffd08a97ad64c`.
 The successful witness executable SHA-256 is `c531e4937475a3b2de849ca373740b2314203c5c43dac8ab5b9760b60c207fa2`.
 Original native binaries and source hashes remain unchanged before and after the compiled probes.
+### Subsequent `known_cov` blocker localization
+
+The accepted scalar binary64-QK policy passes M3 but fails negative block-0 teacher-forced prediction for `known_cov`.
+Error is `1.34354679e-5`, tolerance `1.30408895e-5`, ratio `1.03025702`.
+The diagnostic retains all three packed rows and the original full-tensor RMS/floor; no covariate row is excluded.
+The worst row is row 1, the numeric known covariate, at forecast step 32 and quantile index 1.
+Target row 0 has normalized error `1.646429046e-6`; indicator row 2 has `5.219704397e-6`.
+Both are below the unchanged full-tensor tolerance.
+
+Anchors are not entirely bit-exact in this case.
+Numeric-known location differs by `9.31323e-9`; indicator scale differs by `5.96046e-8`.
+Known scaled features differ in 896/2592 values, maximum `1.192092896e-7`.
+Patch features differ in 896/5184 values by the same maximum; native patch projection differs in 8667/15552 values, maximum `3.051757812e-5`.
+These are observed preparation differences, not proof that scaler rounding alone causes the final failure.
+
+On stored F32 encoder output, the native raw head is byte-exact over 54,432 values.
+Its complete head/monotone/unscale prediction passes at ratio 0.0272982.
+Native encoder on stored `tf.in` passes narrowly at ratio 0.9856133.
+Native encoder on native preparation reproduces the failure at ratio 1.0302570.
+These comparisons use the same fixed stored frames for evaluation; replacing them does not alter the gate.
+Preparation drift is sufficient to cross the threshold on top of the existing encoder drift in this witness.
+
+Independent teacher-boundary enumeration finds ten nonzero boundaries among 146: all eight time SDPA and both variate SDPA outputs.
+Every reported non-SDPA teacher operation is byte-exact on its stored inputs, including head and linear projections.
+The earliest layer-0 time SDPA differs in 12,361/31,104 values, maximum `4.52995e-6`.
+This is compatible with the deliberate higher-accuracy QK policy differing from reference F32 arithmetic; it is not independently a proven kernel bug.
+The bounded diagnostic stops here without another arithmetic change or tolerance adjustment.
+A future uniform value-contraction accuracy experiment would require a separate root precision decision and independent scalar oracle.
+It must preserve all rows, preprocessing, QK policy, and other attention boundaries, and must stop if any existing strict gate fails.
+No such experiment or remaining-case generation accompanies this localization.
+
 ### Scratch-only uniform binary64 QK experiment
 
 A separately authorized accuracy experiment changes only QK accumulation in an isolated `2a687ab` source tree.
