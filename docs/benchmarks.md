@@ -161,3 +161,28 @@ The first proposed optimization scope is the measured linear contraction:
 Only after that evidence should another milestone target attention, symmetric
 pass batching or cache reuse. No runtime optimization is part of this tooling
 change. M7/M8 general CLI, ABI and quantization work remains separate.
+
+## Qualified standalone-ON formal attempt: preflight HOLD
+
+After trained replay acceptance (`67ee694`), a separately authorized attempt
+uses the existing unprofiled Release ON/shared CLI from runtime `68a5a53`.
+LD_PRELOAD is empty and explicitly unset; no interposition is used.
+Effective -O3/-DNDEBUG/contraction flags and expected shared loader closure pass.
+The wrapper then stops **before admission or any forecast** because its reviewed
+per-file pin lookup does not contain `cmake/StandaloneMKL.cmake`.
+
+This is a setup inventory limitation, not a numerical or performance failure.
+The prior `after-matrix.json` tracks files present in its original per-file
+inventory; seven newly added optional-backend files are instead preserved in
+the reviewed `candidate-matrix.tar`. A read-only diagnosis verifies all seven
+current source files byte-for-byte against that archive: StandaloneMKL.cmake,
+standalone_mkl.cpp/.hpp, standalone_mkl_algorithm.hpp, callback_context.cpp/.hpp,
+and graph_lifecycle.hpp. No manifest is silently rewritten or runtime changed.
+
+No timed samples, model runs, M6c result, or retention verdict exist for this
+attempt. No automatic retry follows; root must approve reconciled archive-based
+pin lookup and a fresh output directory. Historical results remain unchanged.
+Evidence under `timestral-m6c-qualified-on-formal` relative to the work root:
+`effective-build-flags.json`, `loader-before.json`, `HOLD.json`, and
+`pin-inventory-diagnosis.json`. Heavy job exits1 at preflight; no child forecast
+remains running. M6c remains unmeasured for this qualified production profile.
