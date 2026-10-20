@@ -1,0 +1,34 @@
+#include "backend.hpp"
+#include "standalone_mkl.hpp"
+#include "common.hpp"
+#include <iostream>
+#include <cstring>
+#include <functional>
+#include <cmath>
+using namespace ts;
+void require(bool b){if(!b)throw Error("standalone boundary assertion");}
+void rejects(std::function<void()> f){bool failed=false;try{f();}catch(...){failed=true;}require(failed);}
+int main(){try{size_t cases=0;
+ {GraphRunner a,b;auto ca=a.begin();auto cb=b.begin();auto root=ggml_new_tensor_1d(ca,GGML_TYPE_F32,8);ggml_set_input(root);auto mid=ggml_view_1d(ca,root,6,4),x=ggml_view_1d(ca,mid,4,4),w=ggml_new_tensor_2d(ca,GGML_TYPE_F32,4,1);ggml_set_input(w);auto y=standalone_patch(ca,w,x,nullptr);auto foreign=ggml_new_tensor_1d(cb,GGML_TYPE_F32,8);ggml_set_input(foreign);auto fy=ggml_dup(cb,foreign);b.allocate({fy});b.upload(foreign,std::vector<float>(8,1));a.allocate({y});a.upload(root,std::vector<float>(8,1));a.upload(w,std::vector<float>(4,1));x->view_src=mid;x->view_offs=4;mid->buffer=foreign->buffer;mid->data=(char*)foreign->data+4;((float*)y->data)[0]=12345;rejects([&]{a.compute();});require(((float*)y->data)[0]==12345);++cases;}
+
+ for(bool after:{false,true}){GraphRunner r;auto ctx=r.begin();auto w=ggml_new_tensor_2d(ctx,GGML_TYPE_F32,1,1),x=ggml_new_tensor_3d(ctx,GGML_TYPE_F32,1,1,1);ggml_set_input(w);ggml_set_input(x);auto y=standalone_patch(ctx,w,x,nullptr);if(after){r.allocate({y});r.upload(w,{1});r.upload(x,{1});((float*)y->data)[0]=12345;}y->op=GGML_OP_DUP;if(after){rejects([&]{r.compute();});require(((float*)y->data)[0]==12345);}else rejects([&]{r.allocate({y});});++cases;}
+
+ {GraphRunner r;detail::inject_callback_fault(detail::CallbackFault::BeginRegistry);rejects([&]{r.begin();});rejects([&]{r.read(nullptr);});auto ctx=r.begin();auto w=ggml_new_tensor_2d(ctx,GGML_TYPE_F32,1,1),x=ggml_new_tensor_3d(ctx,GGML_TYPE_F32,1,1,1);ggml_set_input(w);ggml_set_input(x);auto d=standalone_patch(ctx,w,x,nullptr);auto downstream=standalone_patch(ctx,w,d,nullptr);auto ordinary=ggml_scale(ctx,downstream,2);r.allocate({ordinary});r.upload(w,{1});r.upload(x,{1});detail::inject_callback_fault(detail::CallbackFault::ScratchAllocation);rejects([&]{r.compute();});rejects([&]{r.read(ordinary);});require(((float*)d->data)[0]==0&&((float*)downstream->data)[0]==0&&((float*)ordinary->data)[0]==0);ctx=r.begin();w=ggml_new_tensor_2d(ctx,GGML_TYPE_F32,1,1);x=ggml_new_tensor_3d(ctx,GGML_TYPE_F32,1,1,1);ggml_set_input(w);ggml_set_input(x);auto good=standalone_patch(ctx,w,x,nullptr);r.allocate({good});r.upload(w,{2});r.upload(x,{3});r.compute();require(r.read(good)==std::vector<float>{6});++cases;}
+
+ for(int mutation=0;mutation<7;++mutation){GraphRunner r;auto ctx=r.begin();auto owner=ggml_new_tensor_1d(ctx,GGML_TYPE_F32,8);ggml_set_input(owner);auto mid=ggml_view_1d(ctx,owner,6,4);auto x=ggml_view_1d(ctx,mid,4,4);auto w=ggml_new_tensor_2d(ctx,GGML_TYPE_F32,4,1);ggml_set_input(w);auto y=standalone_patch(ctx,w,x,nullptr);r.allocate({y});r.upload(owner,std::vector<float>(8,1));r.upload(w,std::vector<float>(4,1));x->view_src=mid;x->view_offs=4;std::cerr<<"nested mutation="<<mutation<<"\n";if(mutation==0)mid->data=nullptr;if(mutation==1)mid->data=reinterpret_cast<void*>(uintptr_t(mid->data)+4);if(mutation==2)owner->ne[0]=1;if(mutation==3)x->data=reinterpret_cast<void*>(uintptr_t(x->data)+1);if(mutation==4)owner->data=reinterpret_cast<void*>(uintptr_t(1));if(mutation==5)mid->view_offs=SIZE_MAX;if(mutation==6)owner->view_src=mid;rejects([&]{r.compute();});++cases;}
+
+ for(int mutation=0;mutation<3;++mutation){GraphRunner r;auto ctx=r.begin();auto w=ggml_new_tensor_2d(ctx,GGML_TYPE_F32,1,1),x=ggml_new_tensor_3d(ctx,GGML_TYPE_F32,1,1,1);auto y=standalone_patch(ctx,w,x,nullptr);if(mutation==0)y->ne[0]=0;if(mutation==1)y->nb[0]=8;if(mutation==2)y->src[0]=nullptr;rejects([&]{r.allocate({y});});++cases;}
+
+ {GraphRunner r;auto ctx=r.begin();auto q=ggml_new_tensor_4d(ctx,GGML_TYPE_F32,2,1,2,1),k=ggml_new_tensor_4d(ctx,GGML_TYPE_F32,2,1,2,1),m=ggml_new_tensor_3d(ctx,GGML_TYPE_F32,2,2,1);ggml_set_input(q);ggml_set_input(k);ggml_set_input(m);auto y=standalone_sdpa(ctx,q,k,q,m,0);r.allocate({y});r.upload(q,{1,1,1,1});r.upload(k,{1,1,1,1});r.upload(m,{0,0,0,0});k->ne[0]=1;k->nb[1]=4;k->nb[2]=4;k->nb[3]=8;rejects([&]{r.compute();});++cases;}
+
+ {GraphRunner a,b;auto ca=a.begin();auto cb=b.begin();(void)cb;auto w=ggml_new_tensor_2d(ca,GGML_TYPE_F32,1,1),x=ggml_new_tensor_3d(ca,GGML_TYPE_F32,1,1,1);ggml_set_input(w);ggml_set_input(x);auto unused=standalone_patch(ca,w,x,nullptr);(void)unused;auto y=ggml_dup(ca,x);a.allocate({y});a.upload(x,{2});a.compute();require(a.read(y)==std::vector<float>{2});++cases;}
+ for(int mutation=0;mutation<12;++mutation){GraphRunner r;auto ctx=r.begin();auto w=ggml_new_tensor_2d(ctx,GGML_TYPE_F32,3,2),x=ggml_new_tensor_3d(ctx,GGML_TYPE_F32,3,2,1),b=ggml_new_tensor_1d(ctx,GGML_TYPE_F32,2);ggml_set_input(w);ggml_set_input(x);ggml_set_input(b);
+ if(mutation<7){if(mutation==0)w=nullptr;if(mutation==1)x->ne[0]=4;if(mutation==2)b->type=GGML_TYPE_F16;if(mutation==3)b->ne[0]=3;if(mutation==4)x->ne[1]=0;if(mutation==5)w->ne[2]=2;if(mutation==6)b->nb[0]=8;rejects([&]{standalone_patch(ctx,w,x,b);});}
+ else{auto y=standalone_patch(ctx,w,x,b);r.allocate({y});r.upload(w,std::vector<float>(6,1));r.upload(x,std::vector<float>(6,1));r.upload(b,{1,1});auto saved=x->data;auto saved_buffer=x->buffer;auto old_ne=y->ne[0];if(mutation==7)x->data=nullptr;if(mutation==8)x->data=reinterpret_cast<void*>(uintptr_t(1));if(mutation==9)x->buffer=nullptr;if(mutation==10)y->ne[0]=3;if(mutation==11)x->view_src=x;
+ rejects([&]{r.compute();});rejects([&]{r.read(y);});x->data=saved;x->buffer=saved_buffer;x->view_src=nullptr;y->ne[0]=old_ne;}
+ ++cases;}
+ for(int nth:{1,2,3,6})for(bool bias:{false,true}){GraphRunner r;auto ctx=r.begin();auto w=ggml_new_tensor_2d(ctx,GGML_TYPE_F32,3,2),x=ggml_new_tensor_3d(ctx,GGML_TYPE_F32,3,2,1),b=ggml_new_tensor_1d(ctx,GGML_TYPE_F32,2);ggml_set_input(w);ggml_set_input(x);ggml_set_input(b);auto y=standalone_patch(ctx,w,x,bias?b:nullptr);r.allocate({y});r.upload(w,std::vector<float>(6,1));r.upload(x,std::vector<float>(6,1));if(bias)r.upload(b,{1,1});set_cpu_threads(nth);r.compute();require(r.read(y)==std::vector<float>(4,bias?4:3));++cases;}
+ // Generated NaN mask fails during execution, not preflight. Downstream output cannot be read.
+ {GraphRunner r;auto ctx=r.begin();auto q=ggml_new_tensor_4d(ctx,GGML_TYPE_F32,2,1,2,1),m=ggml_new_tensor_3d(ctx,GGML_TYPE_F32,2,2,1);ggml_set_input(q);ggml_set_input(m);auto d=standalone_sdpa(ctx,q,q,q,m,0);auto y=ggml_dup(ctx,d);r.allocate({y});r.upload(q,{1,1,1,1});r.upload(m,{NAN,0,0,0});rejects([&]{r.compute();});rejects([&]{r.read(y);});for(size_t i=0;i<4;++i)require(((float*)d->data)[i]==0);++cases;}
+ set_cpu_threads(1);std::cout<<"PASS standalone boundary/route cases="<<cases<<"\n";
+}catch(const std::exception&e){std::cerr<<e.what()<<'\n';return 1;}}

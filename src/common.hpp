@@ -14,5 +14,6 @@ struct Error : std::runtime_error {
 
 // Library version string, set at configure time.
 const char* version();
+const char* backend_identity();
 
 } // namespace ts

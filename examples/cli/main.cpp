@@ -1,3 +1,4 @@
+#include "common.hpp"
 // M6c measurement entry point only; the general CLI follows in M8.
 #include "timestral.h"
 #include "transport.hpp"
@@ -79,7 +80,7 @@ int main(int argc, char** argv) {
 #else
         auto rss=usage.ru_maxrss*1024LL;
 #endif
-        std::cout<<std::setprecision(12)<<"{\"backend\":\"native-cpu\",\"model\":"<<quoted(opts["--model"])
+        std::cout<<std::setprecision(12)<<"{\"backend\":"<<quoted(ts::backend_identity())<<",\"model\":"<<quoted(opts["--model"])
                  <<",\"cpu\":"<<quoted(cpu_model())<<",\"context_len\":"<<request.length<<",\"horizon\":"<<request.horizon
                  <<",\"variates\":"<<request.targets<<",\"threads\":"<<threads<<",\"repeat\":"<<repeat<<",\"warmup\":"<<warmup
                  <<",\"input\":\"dyadic-v1\",\"input_sum\":"<<input_sum<<",\"output_sum\":"<<checksum

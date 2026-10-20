@@ -47,10 +47,13 @@ set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 add_subdirectory(third_party/ggml)
 
+include(cmake/StandaloneMKL.cmake)
+
 set(TIMESTRAL_SRC
     src/timestral_capi.cpp
     src/common.cpp
     src/backend.cpp
+    src/callback_context.cpp
     src/model_loader.cpp
     src/scaler.cpp
     src/refine.cpp
@@ -79,6 +82,14 @@ set_target_properties(timestral PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(timestral PUBLIC include $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>)
 target_compile_definitions(timestral PRIVATE TIMESTRAL_VERSION="${TIMESTRAL_VERSION}")
 target_link_libraries(timestral PUBLIC ggml)
+if(TIMESTRAL_BUILD_TESTS)
+  target_compile_definitions(timestral PRIVATE TS_CALLBACK_TESTING)
+endif()
+if(TIMESTRAL_STANDALONE_MKL)
+  target_sources(timestral PRIVATE src/standalone_mkl.cpp)
+  target_compile_definitions(timestral PRIVATE TS_STANDALONE_MKL)
+  target_link_libraries(timestral PRIVATE timestral-standalone-mkl)
+endif()
 
 if(TIMESTRAL_BUILD_QUANTIZE)
   if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")

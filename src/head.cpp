@@ -1,3 +1,6 @@
+#ifdef TS_STANDALONE_MKL
+#include "standalone_mkl.hpp"
+#endif
 #include "head.hpp"
 #include "weight_policy.hpp"
 #include <cmath>
@@ -92,8 +95,14 @@ void detail::head_linear_f64(ggml_tensor* dst,int ith,int nth,void* data){head_l
 namespace ts {
 std::vector<float> context_patch_projection(const Model& m,const std::vector<float>& features,size_t R,size_t L) {
  GraphRunner runner;auto ctx=runner.begin();auto x=ggml_new_tensor_3d(ctx,GGML_TYPE_F32,2*m.config().patch_size,L,R);ggml_set_input(x);
- auto h=head_linear(ctx,m,"patch.hidden",x,true);
- auto y=ggml_add(ctx,head_linear(ctx,m,"patch.out",head_silu(ctx,h),true),head_linear(ctx,m,"patch.res",x,true));
+ auto patch=[&](const char* name,ggml_tensor* input){
+#ifdef TS_STANDALONE_MKL
+ auto w=m.tensor(std::string(name)+".weight");if(w->type==GGML_TYPE_F32)return standalone_patch(ctx,w,input,m.tensor(std::string(name)+".bias"));
+#endif
+ return head_linear(ctx,m,name,input,true);
+ };
+ auto h=patch("patch.hidden",x);
+ auto y=ggml_add(ctx,patch("patch.out",head_silu(ctx,h)),patch("patch.res",x));
  runner.allocate({y});runner.upload(x,features);runner.compute();return runner.read(y);
 }
 }

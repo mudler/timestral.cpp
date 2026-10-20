@@ -1,3 +1,6 @@
+#ifdef TS_STANDALONE_MKL
+#include "standalone_mkl.hpp"
+#endif
 #include "layers.hpp"
 #include "weight_policy.hpp"
 #include <cmath>
@@ -402,6 +405,9 @@ ggml_tensor* attention_time(ggml_context* ctx,ggml_tensor* q,ggml_tensor* k,ggml
     if(!q || !k || !v || !mask || !ggml_are_same_shape(q,k) || !ggml_are_same_shape(q,v) || mask->ne[0]!=q->ne[2] || mask->ne[1]!=q->ne[2] || mask->ne[2]!=q->ne[3])throw Error("invalid SDPA layout");
     for(auto t:{q,k,v,mask})if(t->type!=GGML_TYPE_F32 || !ggml_is_contiguous(t))throw Error("invalid SDPA type/strides");
     if(split>size_t(q->ne[2]) || mask->ne[3]!=1)throw Error("invalid SDPA mask rank");
+#ifdef TS_STANDALONE_MKL
+    return standalone_sdpa(ctx,q,k,v,mask,split);
+#endif
     ggml_tensor* args[]={q,k,v,mask};
     return ggml_custom_4d(ctx,GGML_TYPE_F32,q->ne[0]*q->ne[1],q->ne[2],q->ne[3],1,args,4,detail::sdpa_f32,1,reinterpret_cast<void*>(split));
 }

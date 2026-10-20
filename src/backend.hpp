@@ -41,6 +41,9 @@ ggml_backend_buffer_t backend_buffer_from_mapping(MappedFile& file);
 #include "ggml.h"
 #include "ggml-alloc.h"
 #include <vector>
+#include <memory>
+#include "graph_lifecycle.hpp"
+#include "callback_context.hpp"
 namespace ts {
 // Owns metadata per invocation and a persistent backend allocator across shapes.
 // Not reentrant. Graph tensors are invalidated by begin(); read() returns owned data.
@@ -56,6 +59,11 @@ public:
     void compute();
     std::vector<float> read(ggml_tensor* t) const;
 private:
+    friend CallbackContext* register_callback(ggml_context*,const std::vector<ggml_tensor*>&,size_t);
+    lifecycle::State state_;
+    CallbackStatus callback_status_;
+    std::vector<std::unique_ptr<CallbackContext>> callbacks_;
+    void transition(lifecycle::Event);
     size_t capacity_;
     bool allocated_ = false;
     bool computed_ = false;

@@ -163,3 +163,11 @@ if(TIMESTRAL_BUILD_CLI)
     endif()
   endif()
 endif()
+
+ts_add_test(test_graph_lifecycle)
+
+ts_add_test(test_graph_runner_status)
+if(TIMESTRAL_STANDALONE_MKL)
+  ts_add_test(test_standalone_mkl)
+  target_compile_definitions(test_standalone_mkl PRIVATE TS_CALLBACK_TESTING)
+endif()

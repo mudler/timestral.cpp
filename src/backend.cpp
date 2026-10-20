@@ -4,6 +4,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <map>
+#include <set>
+#include <functional>
 #if !defined(_WIN32)
 #include <fcntl.h>
 #include <sys/mman.h>
@@ -12,7 +15,7 @@
 #endif
 
 namespace ts {
-namespace { thread_local int execution_threads = 1; }
+namespace { thread_local int execution_threads = 1; thread_local std::map<ggml_context*,GraphRunner*> building_runners; }
 void set_cpu_threads(int n) { if(n<1 || n>1024)throw Error("invalid CPU thread count"); execution_threads=n; }
 int cpu_threads() { return execution_threads; }
 
@@ -86,38 +89,66 @@ GraphRunner::GraphRunner(size_t capacity) : capacity_(capacity) {
     if (!allocator_) { ggml_backend_free(backend_); throw Error("cannot create graph allocator"); }
 }
 GraphRunner::~GraphRunner() {
+    if(ctx_)building_runners.erase(ctx_);
     if (ctx_) ggml_free(ctx_);
     ggml_gallocr_free(allocator_);
     ggml_backend_free(backend_);
 }
+void GraphRunner::transition(lifecycle::Event event){auto result=lifecycle::reduce(state_,event);state_=result.state;if(result.effect==lifecycle::Effect::Reject)throw Error(result.rule);}
+CallbackContext* register_callback(ggml_context* ctx,const std::vector<ggml_tensor*>& tensors,size_t split){
+ auto found=building_runners.find(ctx);auto building_runner=found==building_runners.end()?nullptr:found->second;
+ if(!building_runner||building_runner->ctx_!=ctx||!std::holds_alternative<lifecycle::Building>(building_runner->state_.phase))throw Error("callback requires owning GraphRunner");
+ auto context=std::make_unique<CallbackContext>();context->status=&building_runner->callback_status_;context->split=split;context->tensors=tensors;
+ auto result=context.get();building_runner->callbacks_.push_back(std::move(context));return result;
+}
 ggml_context* GraphRunner::begin() {
+    transition(lifecycle::Event::Begin);callbacks_.clear();callback_status_.reset();if(ctx_)building_runners.erase(ctx_);
     if (ctx_) ggml_free(ctx_);
     ctx_ = nullptr; graph_ = nullptr; allocated_ = false; computed_ = false;
     ggml_init_params p{capacity_*ggml_tensor_overhead()+ggml_graph_overhead_custom(capacity_,false), nullptr, true};
     ctx_ = ggml_init(p);
-    if (!ctx_) throw Error("cannot allocate graph metadata");
-    graph_ = ggml_new_graph_custom(ctx_, capacity_, false);
+    if (!ctx_) {state_=lifecycle::reduce(state_,lifecycle::Event::BeginFail).state;throw Error("cannot allocate graph metadata");}
+    try{graph_ = ggml_new_graph_custom(ctx_, capacity_, false);if(detail::consume_callback_fault(detail::CallbackFault::BeginRegistry))throw std::bad_alloc();building_runners[ctx_]=this;}catch(...){state_=lifecycle::reduce(state_,lifecycle::Event::BeginFail).state;building_runners.erase(ctx_);ggml_free(ctx_);ctx_=nullptr;graph_=nullptr;throw;}
     return ctx_;
 }
 void GraphRunner::allocate(const std::vector<ggml_tensor*>& outputs) {
-    if (!graph_ || allocated_ || outputs.empty()) throw Error("graph has no outputs");
-    for (auto* t : outputs) { if (!t) throw Error("null graph output"); ggml_set_output(t); ggml_build_forward_expand(graph_,t); }
-    // Equal node counts do not imply identical leaf allocation assignments
-    // after teacher overrides replace graph edges. Refresh the plan.
-    if (!ggml_gallocr_reserve(allocator_, graph_) || !ggml_gallocr_alloc_graph(allocator_, graph_)) throw Error("cannot allocate graph buffers");
-    allocated_ = true;
+    computed_=false;
+    try {
+      if(!std::holds_alternative<lifecycle::Building>(state_.phase)||!graph_||allocated_||outputs.empty())throw Error("graph allocation order");
+      std::set<ggml_tensor*> visited,active;
+      std::function<void(ggml_tensor*)> validate=[&](ggml_tensor* t){if(!t)return;if(active.count(t))throw Error("cyclic graph");if(!visited.insert(t).second)return;active.insert(t);for(auto& c:callbacks_)if(c->tensors.back()==t)callback_validate_metadata(*c);for(auto src:t->src)validate(src);active.erase(t);};
+      for(auto t:outputs){if(!t)throw Error("null graph output");validate(t);}
+    }catch(...){state_=lifecycle::reduce(state_,lifecycle::Event::ValidationRejected).state;throw;}
+    try {
+      for(auto t:outputs){ggml_set_output(t);ggml_build_forward_expand(graph_,t);}
+      if(!ggml_gallocr_reserve(allocator_,graph_)||!ggml_gallocr_alloc_graph(allocator_,graph_))throw Error("cannot allocate graph buffers");
+      transition(lifecycle::Event::Allocate);allocated_=true;
+    }catch(...){state_=lifecycle::reduce(state_,lifecycle::Event::AllocationFail).state;throw;}
 }
-void GraphRunner::upload(ggml_tensor* t, const std::vector<float>& values) {
-    if (!allocated_ || !t || !(t->flags & GGML_TENSOR_FLAG_INPUT) || t->type != GGML_TYPE_F32 || ggml_nbytes(t) != values.size()*sizeof(float)) throw Error("graph input size/type mismatch");
-    computed_ = false;
-    ggml_backend_tensor_set(t, values.data(), 0, ggml_nbytes(t));
+void GraphRunner::upload(ggml_tensor* t,const std::vector<float>& values) {
+    computed_=false;
+    try {
+      if(!std::holds_alternative<lifecycle::Allocated>(state_.phase)||!allocated_||!t||!(t->flags&GGML_TENSOR_FLAG_INPUT)||t->type!=GGML_TYPE_F32||values.size()>SIZE_MAX/sizeof(float)||ggml_nbytes(t)!=values.size()*sizeof(float))throw Error("graph input size/type/order mismatch");
+    }catch(...){state_=lifecycle::reduce(state_,lifecycle::Event::ValidationRejected).state;throw;}
+    try {ggml_backend_tensor_set(t,values.data(),0,ggml_nbytes(t));transition(lifecycle::Event::Upload);}
+    catch(...){state_=lifecycle::reduce(state_,lifecycle::Event::UploadFail).state;throw;}
 }
 void GraphRunner::compute() {
+    computed_=false;
+    try {for(auto& context:callbacks_){bool reachable=false;for(int i=0;i<ggml_graph_n_nodes(graph_);++i)if(ggml_graph_node(graph_,i)==context->tensors.back()){reachable=true;break;}if(reachable)callback_preflight(*context);}}
+    catch(...){state_=lifecycle::reduce(state_,lifecycle::Event::PreflightFail).state;throw;}
+    transition(lifecycle::Event::Compute);
+    try {
     ggml_backend_cpu_set_n_threads(backend_, cpu_threads());
-    if (!allocated_ || !graph_ || ggml_backend_graph_compute(backend_, graph_) != GGML_STATUS_SUCCESS) throw Error("graph compute failed");
-    computed_ = true;
+    if (!allocated_ || !graph_ || ggml_backend_graph_compute(backend_, graph_) != GGML_STATUS_SUCCESS || callback_status_.failed()) {
+      state_=lifecycle::reduce(state_,lifecycle::Event::WorkerFailure).state;
+      throw Error(callback_status_.failed()?callback_status_.message():"graph compute failed");
+    }
+    transition(lifecycle::Event::Completed);computed_=true;
+    }catch(...){state_=lifecycle::reduce(state_,lifecycle::Event::WorkerFailure).state;throw;}
 }
 std::vector<float> GraphRunner::read(ggml_tensor* t) const {
+    if(lifecycle::reduce(state_,lifecycle::Event::Read).effect!=lifecycle::Effect::ReturnOutput)throw Error("graph result unavailable");
     if (!computed_ || !t || t->type != GGML_TYPE_F32 || !ggml_is_contiguous(t)) throw Error("invalid graph read");
     std::vector<float> result(ggml_nelements(t));
     ggml_backend_tensor_get(t, result.data(), 0, ggml_nbytes(t)); return result;
