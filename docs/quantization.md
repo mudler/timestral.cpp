@@ -48,6 +48,24 @@ The converter permutes QKV before F16 casting and records output-type provenance
 Use synthetic fixtures and existing F32 regressions for this preparatory slice.
 M6c, the 5M F32 prerequisite, real-model quality evaluation, and milestone acceptance remain separate gates.
 
+## Preparatory Q8_0 implementation slice
+
+Q8_0 extends the existing reduced-projection helper without changing F32 or F16 arithmetic paths.
+Only B.4 matrix weights permit Q8_0; contracted row lengths must be positive multiples of 32.
+The converter quantizes each last-axis row after QKV permutation using `gguf.quants.quantize`.
+Packed uint8 rows contain 34 bytes per 32 values: a F16 scale and 32 signed coefficients.
+The writer receives the packed byte shape and explicit Q8_0 type, not a second logical-shape override.
+CPU fallback also quantizes F32 activations to Q8_0; quality evaluation covers that additional error.
+K-quants, Q8_1, and BF16 remain rejected.
+
+Synthetic checks compare scalar block encoding, independent decoding, GGML reference quantization, and all three projection routes.
+Widths 32, 64, and 96 pass; widths 0, 1, 31, 33, and 63 fail without padding or cross-row blocks.
+Cross-language byte checks require the built `test_q8` oracle through `TIMESTRAL_TEST_Q8_BINARY`; a skip is not a slice gate pass.
+The existing F16 rejection control now uses Q8_1 instead of the newly supported Q8_0.
+The existing Python unsupported-format control now uses Q4_K; F32/F16 byte-oracle coverage remains unchanged.
+The 209M metadata audit confirms all 142 B.4 weights satisfy row divisibility; no real weights are converted by synthetic tests.
+M6c and the 5M F32 prerequisite remain pending; this slice does not establish model-level acceptance.
+
 ## Scope and invariants
 
 Compare reduced-precision forecasts with F32 C++ forecasts on identical inputs.

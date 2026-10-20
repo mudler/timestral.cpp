@@ -6,7 +6,10 @@ The default `--outtype f32` keeps every tensor F32.
 `--outtype f16` casts only B.4 projection weights after QKV permutation; all exclusions remain byte-identical F32.
 The F16 output records `timestral.conversion.outtype`, `timestral.conversion.type_policy`, and the converter source SHA-256.
 Licence and original source provenance remain intact.
-Q8, K-quants, and BF16 remain unsupported in this preparatory slice.
+`--outtype q8_0` packs only B.4 weights, after QKV permutation, into blocks along the contracted row axis.
+Each row must contain a positive multiple of 32 F32 values; each block occupies 34 bytes.
+Excluded tensors remain byte-identical F32; metadata records policy `b4-q8_0-v1` and the converter source hash.
+K-quants, Q8_1, and BF16 remain unsupported in this preparatory slice.
 The schema is in `docs/PLAN.md`, sections B.1 to B.4.
 The existing byte-parity checker applies only to F32 outputs; reduced-format tests do not replace that gate.
 

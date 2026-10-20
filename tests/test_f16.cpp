@@ -64,7 +64,7 @@ static void projections(const Model& model,bool reduced){
 int main(){try{
  for(auto name:{"patch.out.weight","head.hidden.weight","head.out.weight","head.res.weight","blk.0.attn.0.qkv.weight","blk.1.ffn_w3.weight"})check(weight_type_allowed(name,GGML_TYPE_F16,7),"F16 scalar block");
  for(auto name:{"patch.hidden.weight","patch.res.weight","patch.forecast_query","rope.cos","rope.inv_freq","out_norm.weight","blk.0.attn_norm.0.weight","head.out.bias","blk.x.ffn_w3.weight"})check(!weight_type_allowed(name,GGML_TYPE_F16,32),"forbidden F16 name");
- for(auto type:{GGML_TYPE_BF16,GGML_TYPE_Q8_0,GGML_TYPE_Q4_K,GGML_TYPE_Q5_K,GGML_TYPE_Q6_K})check(!weight_type_allowed("head.out.weight",type,256),"future type enabled early");
+ for(auto type:{GGML_TYPE_BF16,GGML_TYPE_Q8_1,GGML_TYPE_Q4_K,GGML_TYPE_Q5_K,GGML_TYPE_Q6_K})check(!weight_type_allowed("head.out.weight",type,256),"future type enabled early");
  check(!weight_type_allowed("head.out.weight",GGML_TYPE_F16,0),"zero row accepted");
  for(bool bias:{false,true}){
   auto original=Model::load(fixture(bias));projections(original,false);

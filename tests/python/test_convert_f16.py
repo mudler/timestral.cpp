@@ -36,7 +36,7 @@ class Storage(unittest.TestCase):
             self.assertEqual(out.tobytes(), expected.tobytes())
             self.assertEqual(ty, 1 if name in yes else 0)
         with self.assertRaises(ValueError):
-            ns['storage_tensor']('head.out.weight', a, None, 'q8_0')
+            ns['storage_tensor']('head.out.weight', a, None, 'q4_k')
 
     def test_independent_qkv_row_mapping_f32_and_f16(self):
         c = SimpleNamespace(head_dim=4, num_heads=3)

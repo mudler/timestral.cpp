@@ -4,10 +4,10 @@
 Writes the schema of docs/PLAN.md, sections B.1 to B.3. The GGUF is self-contained: every
 setting is a KV, and the rope tables come from the reference class. Values are never
 changed at f32, except for the exact row permutation of the fused QKV projection (B.3).
-The f16 output casts only the projection weights in the B.4 allowlist.
+The f16 and q8_0 outputs reduce only the projection weights in the B.4 allowlist.
 
     convert_timestral_to_gguf.py --model <hub id or dir> [--revision SHA] \
-        --outtype f32|f16 --output OUT.gguf [--license-file FILE]
+        --outtype f32|f16|q8_0 --output OUT.gguf [--license-file FILE]
 
 Next to OUT.gguf the script also writes OUT.config.json, a copy of the config.json that
 was converted. Only tests read it (gate G0.2); the GGUF does not need it.
@@ -126,12 +126,19 @@ def reduced_weight_name(name: str) -> bool:
 
 
 def storage_tensor(name, a, c, outtype):
-    if outtype not in ('f32', 'f16'):
+    if outtype not in ('f32', 'f16', 'q8_0'):
         raise ValueError('unsupported output type')
     if name.endswith(('qkv.weight', 'qkv.bias')):
         a = permute_qkv(a, c)
     if outtype == 'f16' and reduced_weight_name(name):
         return np.ascontiguousarray(a, dtype=np.float16), gguf.GGMLQuantizationType.F16
+    if outtype == 'q8_0' and reduced_weight_name(name):
+        if a.dtype != np.float32 or a.ndim != 2 or a.shape[-1] <= 0 or a.shape[-1] % 32:
+            raise ValueError('Q8_0 requires F32 matrix rows divisible by 32')
+        if not np.all(np.isfinite(a)):
+            raise ValueError('Q8_0 requires finite source weights')
+        from gguf.quants import quantize
+        return np.ascontiguousarray(quantize(np.ascontiguousarray(a), gguf.GGMLQuantizationType.Q8_0)), gguf.GGMLQuantizationType.Q8_0
     return np.ascontiguousarray(a), gguf.GGMLQuantizationType.F32
 
 
@@ -164,7 +171,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--model", required=True, help="Hub id or local directory")
     ap.add_argument("--revision", default=None)
-    ap.add_argument("--outtype", default="f32", choices=["f32", "f16"])
+    ap.add_argument("--outtype", default="f32", choices=["f32", "f16", "q8_0"])
     ap.add_argument("--output", required=True)
     ap.add_argument("--license-file", default=None)
     ap.add_argument("--name", default=None)
@@ -214,7 +221,7 @@ def main() -> int:
     U("timestral.converter_version", CONVERTER_VERSION)
     if args.outtype != "f32":
         S("timestral.conversion.outtype", args.outtype)
-        S("timestral.conversion.type_policy", "b4-f16-v1")
+        S("timestral.conversion.type_policy", "b4-q8_0-v1" if args.outtype == "q8_0" else "b4-f16-v1")
         S("timestral.conversion.converter_sha256", sha256_of(Path(__file__)))
     U("timestral.patch_size", c.patch_size)
     U("timestral.embedding_length", c.d_model)
