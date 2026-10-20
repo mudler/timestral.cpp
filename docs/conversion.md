@@ -326,3 +326,16 @@ numbers made for tests and carry no trained information.
 The weights of Timestral-209M have their own licence (`docs/PLAN.md`, F.1). The converter
 copies its text into `general.license`. Do not publish a converted file before the licence
 question is settled.
+
+### 5M expanded-profile status after corrected known-row reduction
+
+The independently accepted generic reduction correction at `6f2bab1` resolves
+the earlier known_cov pilot failure in its bounded validation. The subsequent
+seven-case stage produces the complete **13-case/five-mode/all-eight-layer**
+artifact inventory without changing the existing30 artifacts. Six new strict
+cases pass; all_missing fails **G6.3 final** at ratio **1.9828851** after all
+eight teacher/free block comparisons pass. No aggregate13 inference acceptance
+is claimed and no numerical/reference/floor adjustment follows.
+See [the detailed 5M progress record](m7-5m-progress.md) for exact counts,
+resource measurements, source/binary/model pins, coverage audit, and failure
+values. The 5M prerequisite and full M7 acceptance remain HOLD.

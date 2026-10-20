@@ -153,3 +153,73 @@ Prepared aggregate expectations (30 M3 selections/510 comparisons and141 M6b
 comparisons) remain unexecuted expectations, not results. No automatic diagnosis,
 policy change, tolerance/floor/reference rewrite, or retry follows this report.
 The 5M prerequisite remains **HOLD** pending root's next causal-analysis decision.
+
+## Corrected-reduction resume: all_missing final forecast HOLD
+
+Root authorizes the remaining seven cases after independent acceptance of
+`6f2bab197ff19969c41bf80169e660ba4de09350` (generic known-row reduction).
+The actual build is `timestral-m7-known-sum/build`, not the earlier QK-only
+build. Every runtime/include source file matches that commit; accepted final
+source/library/forecast/test pins pass before and after. The model, encoder,
+case spec, reference scripts, and all **30 existing artifacts** also remain
+byte-identical under separate before/after manifests. No build is required.
+
+All35 missing artifacts are generated with unchanged five modes, source/model
+pins, all-layers scratch spec, contracts, and floor formula. Generation runs
+serially at OMP/MKL/OpenBLAS1 under the hard12GiB address-space guard.
+The first six cases pass strict M3/M6b. The last case, all_missing, passes M3
+and eight block comparisons but fails its final forecast. This is an actual
+numerical gate failure, not a tooling-only failure. Stop-on-first-failure means
+no aggregate13 encoder or forecast inference run follows.
+
+| Case | M3 selections/local layers/comparisons | Worst M3 ratio | M6b completed teacher/free/finals/comparisons | Worst actual M6b result |
+|---|---|---:|---|---|
+| cat_uni | 2/16/34 | 0.900000 | 2/2/1/9 | PASS 0.414504 |
+| cat_multi | 2/16/34 | 0.654731 | 2/2/1/9 | PASS 0.541468 |
+| long_h_known | 4/32/68 | 0.614359 | 4/4/1/17 | PASS 0.389194 |
+| nans | 2/16/34 | 0.764751 | 2/2/1/9 | PASS 0.471470 |
+| nonneg | 2/16/34 | 0.520913 | 2/2/1/9 | PASS 0.524350 |
+| const | 2/16/34 | 0.541153 | 2/2/1/9 | PASS 0 |
+| all_missing | 2/16/34 | 0.501643 | 2/2/0/8 | FAIL final 1.9828851 |
+
+Exact failure: **G6.3 final floor_fr original-positive-target-anchor**.
+Normalized error **2.08006087e-5**, floor **5.24503633e-6**, tolerance
+**1.04900727e-5**, ratio **1.9828851**. The final comparison is the ninth
+attempt, not a completed comparison. Summary max_ratio0.537648 describes the
+preceding eight successful block comparisons, not the failing final ratio.
+Intentional negative-control FAIL lines are distinct and correctly rejected.
+No causal operation is established by this final-output failure alone.
+
+Floor warnings remain intact: long_h_known45, nans5, nonneg179 tensors with
+2*floor above cap; cat_uni/cat_multi/const/all_missing have zero such warnings.
+No cap, floor, tolerance, reference tensor, or case selection changes.
+
+An artifact-only external completeness audit runs after stopping: **65 files,
+13 exact case IDs, all five modes, all eight layers for all32 sign/block groups
+per mode**. The 13-case spec deep-matches canonical inputs except approved
+layers=all and exclusion of the two slow cases. This proves stored coverage,
+not passing aggregate inference gates. The expected M3 30/240/510 and M6b
+32/32/13/141 remain **unexecuted aggregate expectations**.
+
+Five-mode generation wall totals/peak RSS KiB:
+cat_uni90.60/713688; cat_multi39.98/713124;
+long_h_known118.03/2198028; nans75.75/1279336;
+nonneg34.19/474160; const37.55/460676; all_missing30.58/496796.
+Total generation wall **426.68 seconds**; maximum RSS approximately2.10GiB.
+The35 new artifacts total **2706293632 bytes**; suite disk is **4787261595
+bytes**, including existing artifacts and auxiliary files. Staging hard links
+do not duplicate artifact data blocks. No reference files are committed.
+
+Evidence under `timestral-m7-5m/remaining-seven`:
+`runtime-source-identity.json`, `final-pins-before.log`,
+`final-pins-after-stopped.log`, `execution-before.json`,
+`execution-after-stopped.json`, `existing30-before.json`,
+`existing30-after-stopped.json`, `resource-artifact-summary.json`,
+`artifact-coverage-stopped.log`, all per-case/mode resource logs,
+contract/floor/M3/M6b logs, and `completed.txt` listing only the six successes.
+The all65 hash inventory resides in `remaining-prepared/all65-artifacts.json`.
+A foreground artifact-audit command was interrupted before completion; its
+bounded background rerun completes and verifies pins, without model execution.
+All generation/gate jobs are accounted: the stage exits1 on the strict failure;
+the follow-up artifact/pin audit exits0. No retry or numerical correction is
+performed. Root owns the next diagnosis. **5M prerequisite remains HOLD.**
