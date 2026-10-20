@@ -132,3 +132,13 @@ Evidence under `timestral-native/m8-cli-sign`: `base.tar`, `ggml.tar`,
 `before.json`, and `after.json`. Source archive, CLI, and shared-library hashes
 match before/after testing. The tested archive precedes this results paragraph;
 implementation and test content match the committed fix.
+
+Archive-build metadata caveat: configure prints ggml commit `be955f52d` because
+Git discovery escapes the extracted archive and finds the surrounding control
+repository. This is misleading build metadata, not the tested vendor revision.
+All **1962 vendor blob IDs**, archive files, extracted files, and the vendor
+portion of the hash-pinned tested-source archive match actual submodule commit
+`e705c5fed490514458bdd2eaddc43bd098fcce9b` exactly. The separate vendor archive
+SHA-256 is `93ff424a3c5b1978df60bc3a4e0436ca4bfdc0f8223361c11df28cbeffff3fb0`.
+`vendor-blob-manifest.json` and `vendor-verification.json` preserve this check.
+No different ggml source is tested; no rebuild is needed for this metadata audit.
