@@ -221,21 +221,51 @@ Final forecasts have layout `(B,V,H,Q)`; all `H*Q` elements of that metric row s
 This matches the final-output mapping in `tests/test_forecast.cpp` from `pos.b0.anchor.loc` and `pos.b0.anchor.scale`.
 Those baseline fields come from the reference denormalization hook; they are corroborating parity artifacts, not substitutes for native F32 anchors.
 
-The current native `ForecastTrace` does not expose anchors.
-Its `positive[0]` block exposes `offset`, `patches`, `length`, `context`, `mask`, `future`, and `future_mask`.
-It omits `BlockPrediction.loc/scale`, groups, and roles.
-Do not claim that anchors are already available through this trace.
+The approved extraction strategy captures the actual first positive
+`BlockPrediction.loc/scale` directly, immediately after predict returns and before
+refinement. It supersedes the earlier shared preparation/scaling-helper proposal;
+no second preparation, scaling, or prediction is part of production extraction.
 
-For a future evaluation driver, reuse a shared preparation/scaling helper extracted from `PredictBlock::predict` and `context_only`.
-The helper must preserve their exact full-window construction, known-row replacement, and anchor selection without running another model prediction.
-Obtain groups, roles, and row counts through the existing `assemble_rows` path with the frozen F32 configuration.
-Use the first positive trace block's exact context, masks, future, and patch count for helper inputs.
-Require block offset zero and equality of trace context/mask with the initial assembled rows/mask.
-Require trace future/future-mask equality with the assembled future's first `patches*patch_size` columns per row.
-Then select target anchors.
-Factor this helper rather than duplicating scaler equations in Python or the driver.
-Such a refactor needs separate implementation authorization and parity checks; this document implements no extraction API.
-A driver must HOLD evaluation until it can extract these exact native anchors.
+`ForecastTrace.capture_initial_anchors` opts in; `capture_blocks=false` avoids
+retaining full block tensors. Defaults preserve existing trace behavior.
+The owned optional `initial_anchors` contains batch, targets, and F32 [B,V]
+location/scale vectors using the mapping above. Capture clears on entry and is
+published only after the complete forecast succeeds. Negative passes and later
+blocks cannot overwrite it. Progress callbacks remain active in anchor-only mode.
+No C ABI or public CLI extraction endpoint is added by this internal extension.
+
+Tests must compare captured bytes with actual independently replayed native
+`PredictBlock` anchors, and compare final forecasts with no/default/full/anchor-only
+traces. Cover target mapping, covariates, categorical inputs, cap/padding,
+multiblock symmetry, stale reuse/failure clearing, and real uni_short/known_cov.
+The record driver remains responsible for successful F32 execution and truthful
+model association; no driver or metric formula changes accompany this capture.
+
+Verified capture checks use an isolated `751f69d` pre-F16 source archive plus
+only the anchor plumbing/test registration. Tiny capture passes **6 cases,
+414 checks**; actual real uni_short/known_cov pass **2 cases, 68 checks**.
+Captured bytes match independently replayed native BlockPrediction values;
+no/default/full/anchor-only forecast bytes agree. Tests cover distinct B>1/V>1
+target frames, covariates/categorical inputs, first-future slices, cap/padding,
+multiblock symmetry, progress, owned reuse, and transactional failure clearing.
+F32 component/tiny CTest passes **37/37**, loader separately **1/1**; complete
+tiny forecast replay passes **28 cases / 684 comparisons**, zero failures,
+worst ratio `0.618082`. No full real aggregate parity replay runs here.
+
+Evidence under `timestral-native/m7-anchors`: `base-commit.txt`, `base.tar`,
+`anchor-runtime.patch`, `configure.log`, `final-build.log`,
+`anchors-final-tiny.log`, `anchors-real.log`, `f32-component-tiny.log`,
+`loader.log`, `forecast-tiny.log`, `tested-source.tar`, `before.json`,
+`after.json`, `vendor-verification.json`, and `source-commit.txt`.
+Archive/library/anchor-test/forecast-test hashes match before/after checks.
+The archive configure log reports surrounding-repository commit `be955f52d`
+through Git discovery; all **1962 vendor blobs** in the actual vendor archive
+and pinned tested-source archive match ggml
+`e705c5fed490514458bdd2eaddc43bd098fcce9b` exactly.
+Builds/tests use `-j2`, serial CPU execution, and the hard 12 GiB guard.
+Concurrent F16/Q8 runtime edits are excluded from this validation.
+This internal extraction does not implement the quant-record driver or accept
+M6c, quantized quality, or the complete M7 milestone.
 
 Let `f[i]` denote F32 C++ forecasts and `q[i]` denote reduced-precision forecasts.
 Include all horizon steps and quantiles within each row.
