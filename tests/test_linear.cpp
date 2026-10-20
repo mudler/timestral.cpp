@@ -4,6 +4,7 @@
 #include <iostream>
 #include <random>
 #include <vector>
+#include <thread>
 
 // Original scalar callback, retained independently of the optimized kernel.
 static std::vector<float> oracle(const std::vector<float>& w,const std::vector<float>& x,
@@ -29,7 +30,7 @@ int main() {
     std::mt19937 rng(739);
     size_t cases=0,values=0;
     for(int k:{1,7,32,64,191,192,193,383,384,385,768,2048})
-    for(int n:{1,7,8,9,17,64,768})
+    for(int n:{1,7,8,9,15,16,17,31,32,33,64,768})
     for(int rows:{1,3,17,31,32,33,34,35,36,39})
     for(int pattern=0;pattern<3;++pattern) {
         std::vector<float> w(k*n),x(k*rows),b(n),y(n*rows+2,-12345);
@@ -49,9 +50,15 @@ int main() {
             wt.ne[0]=k;wt.ne[1]=n;wt.data=w.data();xt.data=x.data();bt.data=b.data();
             dst.ne[0]=n;dst.ne[1]=rows;dst.ne[2]=dst.ne[3]=1;
             dst.data=y.data()+1;dst.src[0]=&wt;dst.src[1]=&xt;dst.src[2]=bias?&bt:nullptr;
-            for(int threads:{1,6}) {
+            for(int threads:{1,2,3,4,6}) {
                 std::fill(y.begin()+1,y.end()-1,-12345);
-                for(int ith=0;ith<threads;++ith)ts::detail::linear_f32(&dst,ith,threads,nullptr);
+                // Modest actual-concurrent subset; all other cases enumerate
+                // partition ownership serially without changing the oracle.
+                if(k==193 && n==33 && rows==35 && pattern==0) {
+                    std::vector<std::thread> workers;
+                    for(int ith=0;ith<threads;++ith)workers.emplace_back([&,ith]{ts::detail::linear_f32(&dst,ith,threads,nullptr);});
+                    for(auto& worker:workers)worker.join();
+                } else for(int ith=0;ith<threads;++ith)ts::detail::linear_f32(&dst,ith,threads,nullptr);
                 if(std::memcmp(expected.data(),y.data()+1,expected.size()*sizeof(float)) ||
                    y.front()!=-12345 || y.back()!=-12345 ||
                    std::memcmp(w.data(),saved_w.data(),w.size()*sizeof(float)) ||
