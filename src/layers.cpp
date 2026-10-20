@@ -265,7 +265,7 @@ bool detail::keypack_bytes(size_t heads,size_t sequence,size_t dim,size_t budget
     bytes=count;return true;
 }
 // CPU flash operation boundaries, evaluated without a dependency on Torch.
-static void sdpa_impl(ggml_tensor* dst,int ith,int nth,void* split_data,detail::KeyPackProbe* probe) {
+static void sdpa_impl(ggml_tensor* dst,int ith,int nth,void* split_data,detail::KeyPackProbe* probe,bool legacy) {
     const int64_t split=reinterpret_cast<uintptr_t>(split_data);
     auto q=dst->src[0],k=dst->src[1],v=dst->src[2],mask=dst->src[3];
     auto Q=(const float*)q->data,K=(const float*)k->data,V=(const float*)v->data,M=(const float*)mask->data;
@@ -276,7 +276,7 @@ static void sdpa_impl(ggml_tensor* dst,int ith,int nth,void* split_data,detail::
     int64_t packed_row=-1;
 #ifdef TS_LINEAR_AVX2
     size_t bytes=0;
-    if(S>=128 && __builtin_cpu_supports("avx2") && __builtin_cpu_supports("fma")) {
+    if(legacy && S>=128 && __builtin_cpu_supports("avx2") && __builtin_cpu_supports("fma")) {
         const size_t budget=probe?probe->budget:16*1024*1024;
         bool fits=detail::keypack_bytes(probe && probe->force_overflow?SIZE_MAX:size_t(H),
                                        size_t(S),size_t(hd),budget,bytes);
@@ -320,7 +320,7 @@ static void sdpa_impl(ggml_tensor* dst,int ith,int nth,void* split_data,detail::
         float mx=-INFINITY;
         int64_t first_key=0;
 #ifdef TS_LINEAR_AVX2
-        if(S>=8 && !(split && S-split<4 && t>=split) &&
+        if(legacy && S>=8 && !(split && S-split<4 && t>=split) &&
            __builtin_cpu_supports("avx2") && __builtin_cpu_supports("fma"))
             first_key=packed && states[h]==1
                 ?attention_packed_keys(Q+(r*S+t)*D+h*hd,packed.get()+h*(S/8)*hd*8,logits.data(),keys,hd)
@@ -331,7 +331,7 @@ static void sdpa_impl(ggml_tensor* dst,int ith,int nth,void* split_data,detail::
             logits[j]=logits[j]*float(1/std::sqrt(double(hd)))+M[(r*S+t)*S+j];
             mx=std::max(mx,logits[j]);
         }
-        for(int64_t j=first_key;j<keys;++j){float dot=0,acc[8]={};for(int64_t d=0;d<hd;++d){float a=Q[(r*S+t)*D+h*hd+d],b=K[(r*S+j)*D+h*hd+d];dot=std::fma(a,b,dot);acc[d%8]+=a*b;}
+        for(int64_t j=first_key;j<keys;++j){float dot=0;if(legacy){float acc[8]={};for(int64_t d=0;d<hd;++d){float a=Q[(r*S+t)*D+h*hd+d],b=K[(r*S+j)*D+h*hd+d];dot=std::fma(a,b,dot);acc[d%8]+=a*b;}
             // Small CPU GEMM uses non-fused lane reductions: four lanes
             // for complete key groups, eight for the remaining key columns.
             // These are execution-shape branches, never layer/case IDs.
@@ -339,6 +339,8 @@ static void sdpa_impl(ggml_tensor* dst,int ith,int nth,void* split_data,detail::
                 if(j<keys/8*8){float a[4]={};for(int64_t d=0;d<hd;++d)a[d%4]+=Q[(r*S+t)*D+h*hd+d]*K[(r*S+j)*D+h*hd+d];dot=(a[0]+a[2])+(a[1]+a[3]);}
                 else dot=((acc[0]+acc[4])+(acc[2]+acc[6]))+((acc[1]+acc[5])+(acc[3]+acc[7]));
             }
+            }
+            if(!legacy){double sum64=0;for(int64_t d=0;d<hd;++d)sum64+=double(Q[(r*S+t)*D+h*hd+d])*double(K[(r*S+j)*D+h*hd+d]);dot=float(sum64);}
             logits[j]=float(dot)*float(1/std::sqrt(double(hd)))+M[(r*S+t)*S+j];mx=std::max(mx,logits[j]);}
         float sums[8]={};int64_t end=keys/8*8;
         for(int64_t j=0;j<keys;++j){p[j]=j<end?attention_exp(logits[j]-mx):float(std::exp(double(logits[j]-mx)));if(j<end)sums[j%8]+=p[j];}
@@ -357,10 +359,13 @@ static void sdpa_impl(ggml_tensor* dst,int ith,int nth,void* split_data,detail::
     }
 }
 void detail::sdpa_f32(ggml_tensor* dst,int ith,int nth,void* split_data) {
-    sdpa_impl(dst,ith,nth,split_data,nullptr);
+    sdpa_impl(dst,ith,nth,split_data,nullptr,false);
+}
+void detail::sdpa_f32_legacy(ggml_tensor* dst,int ith,int nth,void* split_data) {
+    sdpa_impl(dst,ith,nth,split_data,nullptr,true);
 }
 void detail::sdpa_f32_probe(ggml_tensor* dst,int ith,int nth,void* split_data,KeyPackProbe& probe) {
-    sdpa_impl(dst,ith,nth,split_data,&probe);
+    sdpa_impl(dst,ith,nth,split_data,&probe,true);
 }
 ggml_tensor* attention_time(ggml_context* ctx,ggml_tensor* q,ggml_tensor* k,ggml_tensor* v,ggml_tensor* mask,size_t split) {
     if(!q || !k || !v || !mask || !ggml_are_same_shape(q,k) || !ggml_are_same_shape(q,v) || mask->ne[0]!=q->ne[2] || mask->ne[1]!=q->ne[2] || mask->ne[2]!=q->ne[3])throw Error("invalid SDPA layout");

@@ -24,6 +24,8 @@ namespace ts::detail {
 // Internal custom-op callback; exposed for exact scalar-oracle tests.
 void linear_f32(ggml_tensor*,int,int,void*);
 void sdpa_f32(ggml_tensor*,int,int,void*);
+// Internal frozen F32 arithmetic seam for legacy compatibility tests only.
+void sdpa_f32_legacy(ggml_tensor*,int,int,void*);
 }
 
 namespace ts::detail {

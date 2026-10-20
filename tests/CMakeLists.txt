@@ -89,6 +89,11 @@ endif()
 
 ts_add_test(test_forecast_determinism)
 
+ts_add_test(test_attention_precision)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+  target_compile_options(test_attention_precision PRIVATE -ffp-contract=off)
+endif()
+
 ts_add_test(test_attention)
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
   target_compile_options(test_attention PRIVATE -ffp-contract=off)

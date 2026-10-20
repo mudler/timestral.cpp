@@ -165,7 +165,7 @@ int main(int argc,char** argv) {
         dst.data=out.data()+1;
         for(int threads:{1,6}) {
             std::fill(out.begin()+1,out.end()-1,-12345);
-            for(int ith=0;ith<threads;++ith)ts::detail::sdpa_f32(&dst,ith,threads,data);
+            for(int ith=0;ith<threads;++ith)ts::detail::sdpa_f32_legacy(&dst,ith,threads,data);
             if(std::memcmp(expected.data(),out.data()+1,expected.size()*sizeof(float)) ||
                out.front()!=-12345 || out.back()!=-12345) {
                 std::cerr<<"FAIL hd="<<hd<<" seq="<<seq<<" split="<<split
