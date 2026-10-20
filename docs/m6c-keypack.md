@@ -309,3 +309,52 @@ Evidence under `timestral-native/m6c-ownership-audit`: `base.tar`, `ggml.tar`,
 snapshots. Parsed counters are measured execution evidence; allocation totals
 must not be reported as memory peaks. No task-policy optimization is justified
 by the old serial assumption. Root owns the next uninstrumented retention task.
+
+## Third uninstrumented retention attempt: partial one-thread evidence
+
+The separately authorized attempt uses the original pinned pre-reduced-format
+baseline CLI (runtime 8a83cb8) and keypack CLI (runtime 35fdc68), without builds
+or code changes. Three eligible host samples precede execution. Configurations
+run serially under 12 GiB, with 60-second cooldowns, one warmup, and three timed
+32k/1024 forecasts. This is diagnostic, not the formal repeat-five gate.
+
+| One-thread runtime | Samples, seconds | Median seconds | Peak RSS bytes |
+|---|---|---:|---:|
+| Baseline | 45.035663283, 47.820362552, 47.949021372 | 47.820362552 | 951500800 |
+| Keypack | 42.246256123, 41.804174760, 42.659341805 | 42.246256123 | 951595008 |
+
+The clean one-thread pair gives **1.132x**, or **11.66% less median latency**.
+Both processes receive 99% CPU; every before/during/after snapshot remains below
+the approved load/pressure thresholds. Baseline process CPU/wall is
+184.99 s user + 0.17 s system / 185.79 s wall. Candidate is
+168.81 + 0.24 / 169.66 s. All shapes/sample counts/medians and output/input sums
+match the contract. Sums are diagnostic, not substitutes for exact parity.
+
+The following six-thread baseline completes with samples 14.045278096,
+13.437964014,13.203582084 seconds (median 13.437964014), but fails the resource
+screen: pressure avg10 rises to 18.00–20.61%, and load1 reaches 13.82.
+Its 536% CPU utilization is recorded, not a passing isolation guarantee.
+Six active benchmark workers can themselves contribute to host pressure;
+these snapshots do not prove unrelated contention or an intrinsic regression.
+Per the fixed screening rule, this six-thread measurement is **invalid for
+retention**. The script stops without a candidate-six run or any 512 reruns.
+No slow sample is discarded and no alternative median is selected.
+
+**Overall keypack retention remains UNDECIDED.** The one-thread improvement is
+bounded useful evidence, but does not fill the missing valid six-thread pair,
+formal M6c run, or aggregate numerical acceptance. In particular 42.25 seconds
+still exceeds the one-thread formal limit; no tolerance or performance gate is
+relaxed. Root owns any subsequent measurement-policy/retention decision.
+
+Both CLI binaries and the model receive immediate before/after SHA256 checks
+for every completed configuration; all nine comparisons match. Original source
+archives match the earlier reconciled benchmark-specific source pins. The known
+old attention-test manifest mismatch is irrelevant to the pinned CLI files;
+no historical manifest is overwritten.
+
+Evidence under `timestral-native/m6c-keypack/retention-3`: `run.py`,
+`screening.jsonl`, host snapshots including available CPU frequencies/cgroup
+counters, `source-pins.json`, `baseline-32768-1.json`,
+`candidate-32768-1.json`, `baseline-32768-6.json`, corresponding process logs,
+per-configuration before/after hash JSON and host JSON, `completed-summary.json`,
+and `interrupted.txt`. No new attempt or optimization follows this report.
