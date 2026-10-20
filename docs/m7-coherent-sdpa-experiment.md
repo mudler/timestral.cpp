@@ -18,15 +18,19 @@ The callback assumes the current contiguous canonical ggml q/k/v layout `[head_d
 It does not claim arbitrary-stride support; independent tests exercise multiple batches and head counts within that layout.
 The experiment makes no new exceptional-input policy claim.
 
-## Independent accuracy oracle
+## Cross-precision accuracy witness
 
-The oracle recomputes the full formula with long double and the same promoted F32 scale.
+The witness recomputes the full formula with long double and the same promoted F32 scale.
+Its coordinate/indexing and traversal largely mirror the candidate; it is a cross-precision check, not strong independent indexing/reduction validation.
 A compile-time check proves long-double mantissa width exceeds double: 64 versus 53 bits on this host.
 720 adversarial/random geometries cover 1/3/7/8/17/33/64/65 dimensions, vector/tail lengths, batches, three/twelve heads, and context splits.
 Patterns cover causal and finite additive masks, equal logits, extreme separation, value cancellation, subnormals, signed zeros, and finite F32 operands whose products exceed F32 range.
 All 1,218,888 output comparisons satisfy the diagnostic accuracy bound `4*F32_epsilon*max(1,abs(oracle_output))`.
 Maximum observed bound fraction is 0.222223.
 This is not a parity-tolerance change, universal correct-rounding proof, or bitwise-long-double requirement.
+The max-with-one bound is loose near zero, cancellation, and subnormal outputs; it is insufficient as a production accuracy contract.
+No absolute/ULP distribution or condition-scaled error claim is inferred from the retained aggregate bound.
+Before production acceptance, use independently structured coordinate access/materialized head rows and dot/reduction helpers, plus absolute and ULP reporting near cancellation/subnormal cases.
 Input immutability, output sentinels, and finite output checks pass.
 
 ## Same failing layer: retained red and coherent green
@@ -63,5 +67,5 @@ Builds use at most two compiler jobs; execution is serial under 12 GiB.
 
 The coherent contract is promising on these witnesses and satisfies both local and composition metrics here.
 It does not establish full-model parity, performance, exceptional-input semantics, or a production precision policy.
-Root review must choose whether to authorize broader unchanged gates and a production TDD contract.
+Root review must choose whether to authorize stronger independent oracle validation, broader unchanged gates, and a production TDD contract.
 No production runtime file, dependency, public API, reference, floor, or tolerance is modified by this experiment.
