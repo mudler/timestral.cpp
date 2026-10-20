@@ -1201,8 +1201,19 @@ docs/PLAN.md  docs/conversion.md  docs/parity.md  docs/quantization.md  docs/ben
   First, a second-model check: convert `mistralai/Timestral-5M` at f32 (pin its Hub
   revision in `docs/conversion.md`), dump the C.2 cases without the `slow` label in all
   five modes, compute the floors, and run the M3 and M6b gates on it with
-  `TIMESTRAL_TEST_GGUF` and `TIMESTRAL_TEST_BASELINES` pointed at the 5M files. They must
-  pass with no code change.
+  `TIMESTRAL_TEST_GGUF` pointing at the 5M GGUF. Set `TIMESTRAL_TEST_REAL_BASELINES` to
+  the baseline root; the tests read files from its `real/` directory.
+  The gates must pass with no runtime or model implementation change.
+- **5M fixture profile:** copy the canonical case specification under `$TIMESTRAL_WORK`.
+  Change only layer coverage to `all`, covering all eight layers of the selected model.
+  Preserve all 13 non-slow cases, their input semantics, seeds, and forecasting options.
+  Generate all five modes with this scratch specification, then compute the floors.
+  Validate the artifacts against the same scratch specification with explicit case selections.
+  Run the existing M3 and M6b tests with those 13 names in `TIMESTRAL_TEST_REAL_CASES`.
+  Do not use `--selected-reference`: M3 requires every layer.
+  Keep subset and partial diagnostics visible.
+  A separate coverage audit must establish completeness for this exact M7 profile.
+  This profile does not replace or weaken the canonical 209M specification or gates.
 - **Files:** `scripts/convert_timestral_to_gguf.py`, `src/quantize.cpp`,
   `examples/cli/main.cpp`, `scripts/eval_quant.py`, `tests/test_quant.cpp`,
   `docs/quantization.md`.

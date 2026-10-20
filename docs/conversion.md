@@ -48,6 +48,27 @@ run-time-like layouts (several row counts and patch counts, positions `p - first
 each value is compared with the stored table row of its position. Values that differ only
 in the sign of a zero are counted apart from values that differ.
 
+## Second-model checkpoint for M7
+
+Use `mistralai/Timestral-5M` at the immutable Hub revision
+`bdd20cfc15a3fea0e4cb5ccef37f8d3ca7aa335f` for the M7 prerequisite.
+The [pinned configuration](https://huggingface.co/mistralai/Timestral-5M/blob/bdd20cfc15a3fea0e4cb5ccef37f8d3ca7aa335f/config.json)
+has `d_model 192`, three heads, `mlp_hidden_dim 512`, and eight layers.
+Its schedule repeats `time, time, time, time_variate` twice.
+The M7 fixture profile in `docs/PLAN.md` preserves the canonical inputs and records all eight layers.
+This pin records metadata, not a completed conversion or parity gate.
+
+The [pinned licence](https://huggingface.co/mistralai/Timestral-5M/blob/bdd20cfc15a3fea0e4cb5ccef37f8d3ca7aa335f/LICENSE)
+is titled "Modified MIT License", with attribution "2026 - Mistral AI".
+It requires copies or substantial portions of the Model to include the attribution and permission notices.
+The Model includes the weights and associated documentation.
+The licence restricts rights based on the preceding month's global consolidated monthly revenue of the recipient's company or employer.
+The threshold is more than $20 million, or its equivalent in another currency.
+The restriction also covers derivatives, modifications, and combined works, including those from third parties.
+The licence lists `sales@mistral.ai` for commercial licence requests.
+These facts do not establish permission to use or publish converted weights.
+The publication question in `docs/PLAN.md`, F.1, remains unresolved.
+
 ## Tiny checkpoints
 
 `scripts/make_tiny_checkpoint.py --output-dir DIR [--bias]` writes a random checkpoint with
