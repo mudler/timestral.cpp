@@ -197,7 +197,42 @@ The successful bounded rerun uses the documented environment variable instead, w
 The retained `libtorch_cpu.so` SHA-256 is `5acf62dcd9d367db4788122f8fefd506027ed5a7aec70467a7fffd08a97ad64c`.
 The successful witness executable SHA-256 is `c531e4937475a3b2de849ca373740b2314203c5c43dac8ab5b9760b60c207fa2`.
 Original native binaries and source hashes remain unchanged before and after the compiled probes.
-The next decision is whether to authorize a shape-generic independent arithmetic witness, not a runtime patch.
+### Scratch-only uniform binary64 QK experiment
+
+A separately authorized accuracy experiment changes only QK accumulation in an isolated `2a687ab` source tree.
+Every context and decoder dot sums `double(q)*double(k)` in ascending dimension order, then rounds once to F32.
+Scale, mask, max, exp, sum, value contraction, and reciprocal placement remain unchanged.
+There is no model-specific or winning-shape branch; the production worktree retains its original kernel.
+
+Across all eight stored controls, all 2190 candidate dots match the F32-rounded independent `math.fsum` of exact binary32 products.
+This supports accuracy on those witnesses, not universal exactness of sequential binary64 summation or MKL parity.
+Candidate and MKL dots often differ; output agreement is not selected as the mathematical oracle.
+All reconstructed SDPA outputs remain finite.
+
+The complete existing 5M `uni_one_patch` M6b pilot passes both signs: two teacher blocks, two free blocks, one final, nine comparisons.
+Its maximum error/tolerance ratio is 0.891812, with invariants passing.
+The same unchanged floors/artifacts previously failed the retained F32 runtime at ratio 1.07017442.
+
+Conditional bounded regressions pass 34 selected tiny component tests, including F16/Q8 routing.
+Full tiny forecasting passes 28 cases and 684 comparisons, maximum ratio 0.618082.
+The 209M `uni_one_patch` and `uni_short` subset passes 18 comparisons, maximum ratio 0.703131.
+Tiny 28-case and 209M 512/32 determinism checks pass repeated execution at threads 1 and 6.
+These subsets are not full 209M or full 5M acceptance.
+
+The unchanged `test_attention` is explicitly excluded from that 34-test selection and fails when run separately.
+It aborts at `keypack exact/immutability` because its frozen F32 arithmetic oracle no longer matches the candidate policy.
+The original oracle remains intact: this experiment does not weaken or replace it.
+The complete test suite and production adoption therefore remain HOLD.
+A production proposal requires a separate independent binary64 oracle and an explicit legacy-versus-new precision-policy test separation.
+It also requires broader reference parity and performance measurements; neither follows automatically from this pilot.
+
+The scratch source archive SHA-256 is `c509e78a60b67cb3ba29129f89b0479c6b5f148bb0b19ea7693d799fe35d7998`.
+Its `libtimestral.a` SHA-256 is `36dbfec5608b833a64718581cdb94fdaf1241e963b33b0017917b6d946e3aad8`.
+The candidate forecast executable SHA-256 is `b2e839a8e3d43c20fad93090de5028a674efa9f341c35f28c066227a444ce040`.
+All 1962 vendor blobs match ggml `e705c5fed490514458bdd2eaddc43bd098fcce9b` despite misleading outer-repository configure metadata.
+Original source/binaries and all 5M model/reference artifact hashes remain unchanged before and after the runs.
+All builds/tests use serial execution under 12 GiB, with at most two compiler jobs.
+The scratch patch and red/green evidence remain retained; no production arithmetic change accompanies these results.
 No production arithmetic, floor, tolerance, or baseline changes follow these probes.
 A later correction needs independent shape-generic contraction witnesses, not a model-name branch or tolerance change.
 Pilot timings do not justify extrapolating the long multiblock cases; resolving parity precedes the full-profile cost decision.
