@@ -128,3 +128,8 @@ if(TIMESTRAL_BUILD_EVAL_DRIVER)
   add_test(NAME test_eval_driver_209m COMMAND test_eval_driver --real)
   set_tests_properties(test_eval_driver_209m PROPERTIES SKIP_RETURN_CODE 77)
 endif()
+
+if(TIMESTRAL_BUILD_QUANTIZE)
+  ts_add_test(test_quant)
+  target_link_libraries(test_quant PRIVATE timestral-quantize OpenSSL::Crypto)
+endif()

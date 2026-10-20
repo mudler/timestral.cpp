@@ -71,7 +71,7 @@ int main(int argc,char** argv){try{
  for(auto name:{"patch.hidden.weight","patch.res.weight","patch.forecast_query","rope.cos","rope.inv_freq","out_norm.weight","head.out.bias"})check(!weight_type_allowed(name,GGML_TYPE_Q8_0,64),"Q8 exclusion");
  for(int width:{32,64,96})check(weight_type_allowed("head.out.weight",GGML_TYPE_Q8_0,width),"Q8 row accepted");
  for(int width:{0,1,31,33,63})check(!weight_type_allowed("head.out.weight",GGML_TYPE_Q8_0,width),"Q8 row rejected");
- for(auto type:{GGML_TYPE_BF16,GGML_TYPE_Q8_1,GGML_TYPE_Q4_K,GGML_TYPE_Q5_K,GGML_TYPE_Q6_K})check(!weight_type_allowed("head.out.weight",type,256),"future type rejected");
+ for(auto type:{GGML_TYPE_BF16,GGML_TYPE_Q8_1,GGML_TYPE_Q2_K,GGML_TYPE_Q3_K})check(!weight_type_allowed("head.out.weight",type,256),"future type rejected");
  for(bool bias:{false,true}){
   auto original=Model::load(fixture(bias));projections(original,false);
   auto path=std::string(TS_TEST_TMP_DIR)+(bias?"/tiny-bias-q8.gguf":"/tiny-q8.gguf");rewrite(fixture(bias),path);auto m=Model::load(path);

@@ -9,6 +9,9 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
+option(TIMESTRAL_BUILD_QUANTIZE "Build optional OpenSSL-backed quantizer tool library" OFF)
+set(TIMESTRAL_QUANTIZE_COMMIT "" CACHE STRING "Explicit quantizer commit")
+set(TIMESTRAL_QUANTIZE_SOURCE_SHA256 "" CACHE STRING "Explicit quantizer source SHA256")
 option(TIMESTRAL_BUILD_TESTS  "Build ctest targets" OFF)
 option(TIMESTRAL_BUILD_EVAL_DRIVER "Build internal F32 evaluation driver" OFF)
 set(TIMESTRAL_EVAL_RUNTIME_COMMIT "" CACHE STRING "Explicit evaluation runtime commit")
@@ -76,6 +79,25 @@ set_target_properties(timestral PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(timestral PUBLIC include $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>)
 target_compile_definitions(timestral PRIVATE TIMESTRAL_VERSION="${TIMESTRAL_VERSION}")
 target_link_libraries(timestral PUBLIC ggml)
+
+if(TIMESTRAL_BUILD_QUANTIZE)
+  if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    message(FATAL_ERROR "Atomic quantizer currently requires Linux")
+  endif()
+  string(LENGTH "${TIMESTRAL_QUANTIZE_COMMIT}" _qc_len)
+  string(LENGTH "${TIMESTRAL_QUANTIZE_SOURCE_SHA256}" _qs_len)
+  if(NOT _qc_len EQUAL 40 OR NOT _qs_len EQUAL 64 OR
+     NOT TIMESTRAL_QUANTIZE_COMMIT MATCHES "^[0-9a-f]+$" OR
+     NOT TIMESTRAL_QUANTIZE_SOURCE_SHA256 MATCHES "^[0-9a-f]+$")
+    message(FATAL_ERROR "Explicit 40-character quantizer commit and 64-character source hash required")
+  endif()
+  find_package(OpenSSL REQUIRED COMPONENTS Crypto)
+  add_library(timestral-quantize STATIC src/quantize.cpp)
+  target_link_libraries(timestral-quantize PUBLIC timestral PRIVATE OpenSSL::Crypto)
+  target_compile_definitions(timestral-quantize PRIVATE
+    TS_QUANTIZE_COMMIT="${TIMESTRAL_QUANTIZE_COMMIT}"
+    TS_QUANTIZE_SOURCE_SHA256="${TIMESTRAL_QUANTIZE_SOURCE_SHA256}")
+endif()
 
 if(TIMESTRAL_BUILD_CLI)
   add_subdirectory(examples/cli)

@@ -66,6 +66,38 @@ The existing Python unsupported-format control now uses Q4_K; F32/F16 byte-oracl
 The 209M metadata audit confirms all 142 B.4 weights satisfy row divisibility; no real weights are converted by synthetic tests.
 M6c and the 5M F32 prerequisite remain pending; this slice does not establish model-level acceptance.
 
+## Preparatory K-quant writer design
+
+An optional `TIMESTRAL_BUILD_QUANTIZE` target defaults OFF.
+Its separate tool library links OpenSSL Crypto; inference-only `timestral` retains no OpenSSL dependency.
+Explicit build definitions supply a 40-character commit and 64-character source hash.
+The API accepts only F32 GGUF inputs and Q6_K, Q5_K, or Q4_K output types.
+Every B.4 row must divide by 256; exclusions remain byte-identical F32.
+
+The Linux/POSIX transaction rejects existing destinations and symlink sources or destinations.
+It opens the destination directory once, snapshots and hashes the source through an exclusive temporary file, then validates that snapshot.
+It writes fresh GGUF descriptors to another exclusive temporary file through `gguf_write_to_file_ptr`.
+It preserves every typed source KV, including unknown arrays and licence fields, and rejects an existing quantization namespace.
+Before publication, it reloads the output and checks types, shapes, encoded data, copied KV, and excluded tensor bytes.
+It hashes the actual output, then publishes without replacement using `renameat2` or a same-directory `linkat` fallback.
+A destination created during conversion must remain unchanged.
+Prepublication failures remove temporary files; postpublication directory-sync failure returns a distinct published-but-not-durability-confirmed result.
+Internal test hooks exercise failure cleanup and races; the public API exposes no failure-injection option.
+
+Synthetic D256/FF256 fixtures exercise complete files and all projection routes without trained weights.
+The first slice implements core writing and runtime policy only; positional CLI integration remains a separate slice.
+No source snapshot, test, or synthetic conversion establishes M6c, 5M parity, or model-level quantization acceptance.
+
+The synthetic core-writer build uses base commit `a17a8b29302c53a23dc7b99cf1c0fa6b972ecef9` plus the K slice.
+That base includes the accepted anchor capture; it does not include the later driver.
+The final source archive SHA-256 is `980e8beff846e0b16f8a32240ff02bb674dde5bdc3b8cc6f7ef1d7e884e55669`.
+The build records that archive hash through `TIMESTRAL_QUANTIZE_SOURCE_SHA256` and the base through `TIMESTRAL_QUANTIZE_COMMIT`.
+OpenSSL Crypto comes from the system runtime, with matching scratch development headers; inference-core symbol checks show no OpenSSL references.
+Synthetic transaction tests cover six complete conversions, reference bytes, all three routes, copied typed KV, actual hashes, cleanup, and no-clobber races.
+They also check the link fallback and the published-but-durability-unconfirmed result.
+The final focused run uses corrected synthetic RoPE tables and emits no RoPE warnings.
+All builds/tests use a 12 GiB address-space cap, serial execution, and at most two compiler jobs.
+
 ## Scope and invariants
 
 Compare reduced-precision forecasts with F32 C++ forecasts on identical inputs.
