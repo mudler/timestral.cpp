@@ -25,3 +25,15 @@ namespace ts::detail {
 void linear_f32(ggml_tensor*,int,int,void*);
 void sdpa_f32(ggml_tensor*,int,int,void*);
 }
+
+namespace ts::detail {
+// Internal deterministic fallback/coverage seam, not part of the public ABI.
+struct KeyPackProbe {
+    size_t budget=16*1024*1024;
+    bool fail_allocation=false;
+    bool force_overflow=false;
+    size_t packed_heads=0,allocation_fallbacks=0,size_fallbacks=0;
+};
+bool keypack_bytes(size_t heads,size_t sequence,size_t dim,size_t budget,size_t& bytes);
+void sdpa_f32_probe(ggml_tensor*,int,int,void*,KeyPackProbe&);
+}

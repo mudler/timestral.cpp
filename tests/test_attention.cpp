@@ -50,7 +50,66 @@ static void sdpa_f32(ggml_tensor* dst,int ith,int nth,void* split_data) {
     }
 }
 }
+static void keypack_cases() {
+    size_t bytes=0;
+    if(!ts::detail::keypack_bytes(12,1056,64,16*1024*1024,bytes) || bytes!=3244032 ||
+       ts::detail::keypack_bytes(SIZE_MAX,128,64,SIZE_MAX,bytes) ||
+       ts::detail::keypack_bytes(12,1056,64,1,bytes))throw std::runtime_error("size guards");
+    size_t cases=0,packed_heads=0,allocation_fallbacks=0,size_fallbacks=0;
+    for(int seq:{127,128,129,132})for(int split:{0,seq-3,seq-4})
+    for(int hd:{7,33,65})for(int threads:{1,4,6}) {
+        const int H=2,R=2,D=H*hd;
+        std::vector<float> q(R*seq*D),k(q.size()),v(q.size()),mask(R*seq*seq);
+        for(size_t i=0;i<q.size();++i) {
+            q[i]=float(int(i%17)-8)/32;k[i]=float(int((i*7)%23)-11)/32;
+            v[i]=i%4==0?-0.f:float(int(i%31)-15)/16;
+        }
+        for(int r=0;r<R;++r)for(int t=0;t<seq;++t)for(int j=0;j<seq;++j)
+            mask[(r*seq+t)*seq+j]=j>t?-INFINITY:0.f;
+        const auto sq=q,sk=k,sv=v,sm=mask;
+        std::vector<float> expected(q.size()),out(q.size()+2,-12345);
+        ggml_tensor qt{},kt{},vt{},mt{},dst{};
+        qt.ne[0]=hd;qt.ne[1]=H;qt.ne[2]=seq;qt.ne[3]=R;
+        qt.data=q.data();kt.data=k.data();vt.data=v.data();mt.data=mask.data();
+        dst.src[0]=&qt;dst.src[1]=&kt;dst.src[2]=&vt;dst.src[3]=&mt;
+        void* data=reinterpret_cast<void*>(uintptr_t(split));dst.data=expected.data();
+        oracle::sdpa_f32(&dst,0,1,data);dst.data=out.data()+1;
+        for(int mode=0;mode<4;++mode) {
+            ts::detail::KeyPackProbe probe;
+            probe.fail_allocation=mode==1;probe.force_overflow=mode==3;
+            if(mode==2)probe.budget=1;
+            std::fill(out.begin()+1,out.end()-1,-12345);
+            for(int ith=0;ith<threads;++ith)ts::detail::sdpa_f32_probe(&dst,ith,threads,data,probe);
+            if(std::memcmp(expected.data(),out.data()+1,expected.size()*sizeof(float)) ||
+               out.front()!=-12345 || out.back()!=-12345 ||
+               std::memcmp(q.data(),sq.data(),q.size()*4) || std::memcmp(k.data(),sk.data(),k.size()*4) ||
+               std::memcmp(v.data(),sv.data(),v.size()*4) || std::memcmp(mask.data(),sm.data(),mask.size()*4))
+                throw std::runtime_error("keypack exact/immutability");
+            // H=2,nth=4 assigns alternating queries: 125/126 eligible queries
+            // own 31/32 each; 129 owns 32/33, explicitly crossing the threshold.
+            if(mode==0 && threads==1 && seq>=128 && probe.packed_heads && probe.packed_heads!=size_t(R*H))
+                throw std::runtime_error("batch/head invalidation");
+            if(mode==0 && probe.packed_heads) {
+                size_t expected_packs=0;
+                for(int r=0;r<R;++r)for(int h=0;h<H;++h)for(int ith=0;ith<threads;++ith) {
+                    int owned=0;
+                    for(int t=0;t<seq;++t) {
+                        if(split && seq-split<4 && t>=split)continue;
+                        if(((r*seq+t)*H+h)%threads==ith)++owned;
+                    }
+                    if(owned>=32)++expected_packs;
+                }
+                if(probe.packed_heads!=expected_packs)throw std::runtime_error("owned threshold/reset count");
+            }
+            packed_heads+=probe.packed_heads;allocation_fallbacks+=probe.allocation_fallbacks;
+            size_fallbacks+=probe.size_fallbacks;++cases;
+        }
+    }
+    std::cout<<"PASS "<<cases<<" focused keypack comparisons packed_heads="<<packed_heads
+             <<" allocation_fallbacks="<<allocation_fallbacks<<" size_fallbacks="<<size_fallbacks<<'\n';
+}
 int main() {
+    keypack_cases();
     std::mt19937 rng(821);size_t cases=0,values=0;
     for(int hd:{1,7,8,15,16,17,23,31,32,33,63,64,65})
     for(int seq:{1,3,7,8,9,15,16,17,23,24,25,31,32,33,65})

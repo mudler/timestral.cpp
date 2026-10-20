@@ -192,6 +192,19 @@ static float attention_exp(float x) {
     return (y*std::ldexp(1.f,int(n)-1))*2;
 }
 #ifdef TS_LINEAR_AVX2
+__attribute__((target("avx2,fma")))
+static int64_t attention_packed_keys(const float* q,const float* packed,float* dots,
+                                    int64_t keys,int64_t hd) {
+    int64_t j=0;
+    for(;j+8<=keys;j+=8) {
+        __m256 dot=_mm256_setzero_ps();
+        const float* group=packed+(j/8)*hd*8;
+        for(int64_t d=0;d<hd;++d)
+            dot=_mm256_fmadd_ps(_mm256_set1_ps(q[d]),_mm256_loadu_ps(group+d*8),dot);
+        _mm256_storeu_ps(dots+j,dot);
+    }
+    return j;
+}
 // Each lane owns a key dot and retains ascending head-dimension FMA order.
 __attribute__((target("avx2,fma")))
 static int64_t attention_keys(const float* q,const float* k,float* dots,
@@ -239,23 +252,76 @@ static int64_t attention_values(const float* p,const float* v,float* out,
     return d;
 }
 #endif
+bool detail::keypack_bytes(size_t heads,size_t sequence,size_t dim,size_t budget,size_t& bytes) {
+    size_t count=sequence/8;
+    for(size_t factor:{dim,size_t(8),heads,sizeof(float)}) {
+        if(factor && count>std::numeric_limits<size_t>::max()/factor)return false;
+        count*=factor;
+    }
+    if(!count || count>budget)return false;
+    bytes=count;return true;
+}
 // CPU flash operation boundaries, evaluated without a dependency on Torch.
-void detail::sdpa_f32(ggml_tensor* dst,int ith,int nth,void* split_data) {
+static void sdpa_impl(ggml_tensor* dst,int ith,int nth,void* split_data,detail::KeyPackProbe* probe) {
     const int64_t split=reinterpret_cast<uintptr_t>(split_data);
     auto q=dst->src[0],k=dst->src[1],v=dst->src[2],mask=dst->src[3];
     auto Q=(const float*)q->data,K=(const float*)k->data,V=(const float*)v->data,M=(const float*)mask->data;
     auto Y=(float*)dst->data;
     const int64_t H=q->ne[1],hd=q->ne[0],S=q->ne[2],D=H*hd;
+    std::unique_ptr<float[]> packed;
+    std::unique_ptr<unsigned char[]> states;
+    int64_t packed_row=-1;
+#ifdef TS_LINEAR_AVX2
+    size_t bytes=0;
+    if(S>=128 && __builtin_cpu_supports("avx2") && __builtin_cpu_supports("fma")) {
+        const size_t budget=probe?probe->budget:16*1024*1024;
+        bool fits=detail::keypack_bytes(probe && probe->force_overflow?SIZE_MAX:size_t(H),
+                                       size_t(S),size_t(hd),budget,bytes);
+        if(!fits) {if(probe)++probe->size_fallbacks;}
+        else {
+            if(!(probe && probe->fail_allocation)) {
+                packed.reset(new(std::nothrow) float[bytes/sizeof(float)]);
+                states.reset(new(std::nothrow) unsigned char[size_t(H)]);
+            }
+            if(!packed || !states) {
+                packed.reset();states.reset();
+                if(probe)++probe->allocation_fallbacks;
+            }
+        }
+    }
+#endif
     std::vector<float> logits(S),p(S);
     for(int64_t job=ith;job<q->ne[3]*S*H;job+=nth) {
         int64_t h=job%H,t=job/H%S,r=job/(H*S);
         int64_t keys=(split && t<split)?split:S;
+        if(packed && packed_row!=r) {
+            std::fill_n(states.get(),size_t(H),0);packed_row=r;
+        }
+        const bool wide=S>=8 && !(split && S-split<4 && t>=split);
+        if(packed && wide && keys>=8 && states[h]==0) {
+            size_t owned=0;
+            for(int64_t query=0;query<S;++query) {
+                if(split && S-split<4 && query>=split)continue;
+                if((split && query<split?split:S)<8)continue;
+                if(((r*S+query)*H+h)%nth==ith)++owned;
+            }
+            states[h]=2;
+            if(owned>=32) {
+                float* head=packed.get()+h*(S/8)*hd*8;
+                for(int64_t group=0;group<S/8;++group)
+                    for(int64_t d=0;d<hd;++d)for(int lane=0;lane<8;++lane)
+                        head[(group*hd+d)*8+lane]=K[(r*S+group*8+lane)*D+h*hd+d];
+                states[h]=1;if(probe)++probe->packed_heads;
+            }
+        }
         float mx=-INFINITY;
         int64_t first_key=0;
 #ifdef TS_LINEAR_AVX2
         if(S>=8 && !(split && S-split<4 && t>=split) &&
            __builtin_cpu_supports("avx2") && __builtin_cpu_supports("fma"))
-            first_key=attention_keys(Q+(r*S+t)*D+h*hd,K+r*S*D+h*hd,logits.data(),keys,D,hd);
+            first_key=packed && states[h]==1
+                ?attention_packed_keys(Q+(r*S+t)*D+h*hd,packed.get()+h*(S/8)*hd*8,logits.data(),keys,hd)
+                :attention_keys(Q+(r*S+t)*D+h*hd,K+r*S*D+h*hd,logits.data(),keys,D,hd);
 #endif
         // Consume SIMD dots in the original scalar key order for scale/mask/max.
         for(int64_t j=0;j<first_key;++j) {
@@ -286,6 +352,12 @@ void detail::sdpa_f32(ggml_tensor* dst,int ith,int nth,void* split_data) {
 #endif
         for(int64_t d=first;d<hd;++d){float y=0;for(int64_t j=0;j<keys;++j){if(hd<16)y+=p[j]*V[(r*S+j)*D+h*hd+d];else y=std::fma(p[j],V[(r*S+j)*D+h*hd+d],y);}Y[(r*S+t)*D+h*hd+d]=float(y)*reciprocal;}
     }
+}
+void detail::sdpa_f32(ggml_tensor* dst,int ith,int nth,void* split_data) {
+    sdpa_impl(dst,ith,nth,split_data,nullptr);
+}
+void detail::sdpa_f32_probe(ggml_tensor* dst,int ith,int nth,void* split_data,KeyPackProbe& probe) {
+    sdpa_impl(dst,ith,nth,split_data,&probe);
 }
 ggml_tensor* attention_time(ggml_context* ctx,ggml_tensor* q,ggml_tensor* k,ggml_tensor* v,ggml_tensor* mask,size_t split) {
     if(!q || !k || !v || !mask || !ggml_are_same_shape(q,k) || !ggml_are_same_shape(q,v) || mask->ne[0]!=q->ne[2] || mask->ne[1]!=q->ne[2] || mask->ne[2]!=q->ne[3])throw Error("invalid SDPA layout");
