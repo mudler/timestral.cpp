@@ -23,4 +23,5 @@ ggml_tensor* sigmoid(ggml_context*,ggml_tensor*);
 namespace ts::detail {
 // Internal custom-op callback; exposed for exact scalar-oracle tests.
 void linear_f32(ggml_tensor*,int,int,void*);
+void sdpa_f32(ggml_tensor*,int,int,void*);
 }

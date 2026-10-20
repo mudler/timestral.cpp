@@ -148,8 +148,22 @@ static float attention_exp(float x) {
     for(float a:{.166676521f,.499991506f,.999999701f,1.f})y=std::fma(r,y,a);
     return (y*std::ldexp(1.f,int(n)-1))*2;
 }
+#ifdef TS_LINEAR_AVX2
+__attribute__((target("avx2,fma")))
+static int64_t attention_values(const float* p,const float* v,float* out,
+                                int64_t keys,int64_t stride,int64_t hd,float reciprocal) {
+    int64_t d=0;
+    for(;d+8<=hd;d+=8) {
+        __m256 sum=_mm256_setzero_ps();
+        for(int64_t j=0;j<keys;++j)
+            sum=_mm256_fmadd_ps(_mm256_set1_ps(p[j]),_mm256_loadu_ps(v+j*stride+d),sum);
+        _mm256_storeu_ps(out+d,_mm256_mul_ps(sum,_mm256_set1_ps(reciprocal)));
+    }
+    return d;
+}
+#endif
 // CPU flash operation boundaries, evaluated without a dependency on Torch.
-static void sdpa_f32(ggml_tensor* dst,int ith,int nth,void* split_data) {
+void detail::sdpa_f32(ggml_tensor* dst,int ith,int nth,void* split_data) {
     const int64_t split=reinterpret_cast<uintptr_t>(split_data);
     auto q=dst->src[0],k=dst->src[1],v=dst->src[2],mask=dst->src[3];
     auto Q=(const float*)q->data,K=(const float*)k->data,V=(const float*)v->data,M=(const float*)mask->data;
@@ -177,7 +191,12 @@ static void sdpa_f32(ggml_tensor* dst,int ith,int nth,void* split_data) {
         // each probability before it. Preserve that rounding boundary.
         float reciprocal=1.0f/float(sum);
         // Narrow output GEMM uses separate multiply/add; wide panels use FMA.
-        for(int64_t d=0;d<hd;++d){float y=0;for(int64_t j=0;j<keys;++j){if(hd<16)y+=p[j]*V[(r*S+j)*D+h*hd+d];else y=std::fma(p[j],V[(r*S+j)*D+h*hd+d],y);}Y[(r*S+t)*D+h*hd+d]=float(y)*reciprocal;}
+        int64_t first=0;
+#ifdef TS_LINEAR_AVX2
+        if(hd>=16 && __builtin_cpu_supports("avx2") && __builtin_cpu_supports("fma"))
+            first=attention_values(p.data(),V+r*S*D+h*hd,Y+(r*S+t)*D+h*hd,keys,D,hd,reciprocal);
+#endif
+        for(int64_t d=first;d<hd;++d){float y=0;for(int64_t j=0;j<keys;++j){if(hd<16)y+=p[j]*V[(r*S+j)*D+h*hd+d];else y=std::fma(p[j],V[(r*S+j)*D+h*hd+d],y);}Y[(r*S+t)*D+h*hd+d]=float(y)*reciprocal;}
     }
 }
 ggml_tensor* attention_time(ggml_context* ctx,ggml_tensor* q,ggml_tensor* k,ggml_tensor* v,ggml_tensor* mask,size_t split) {
@@ -185,7 +204,7 @@ ggml_tensor* attention_time(ggml_context* ctx,ggml_tensor* q,ggml_tensor* k,ggml
     for(auto t:{q,k,v,mask})if(t->type!=GGML_TYPE_F32 || !ggml_is_contiguous(t))throw Error("invalid SDPA type/strides");
     if(split>size_t(q->ne[2]) || mask->ne[3]!=1)throw Error("invalid SDPA mask rank");
     ggml_tensor* args[]={q,k,v,mask};
-    return ggml_custom_4d(ctx,GGML_TYPE_F32,q->ne[0]*q->ne[1],q->ne[2],q->ne[3],1,args,4,sdpa_f32,1,reinterpret_cast<void*>(split));
+    return ggml_custom_4d(ctx,GGML_TYPE_F32,q->ne[0]*q->ne[1],q->ne[2],q->ne[3],1,args,4,detail::sdpa_f32,1,reinterpret_cast<void*>(split));
 }
 ggml_tensor* attention_variate(ggml_context* ctx,ggml_tensor* q,ggml_tensor* k,ggml_tensor* v,ggml_tensor* mask) {
     return attention_time(ctx,q,k,v,mask,0);
