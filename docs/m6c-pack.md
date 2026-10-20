@@ -72,13 +72,27 @@ uncertainty remains. These cold single samples are not acceptance medians.
 Input/output sums match between the probes; exact tests, not sums, establish
 focused parity evidence. No six-thread 32k result exists for this candidate.
 
-The approved 32-row activation threshold also affects the 512 workload.
 Warm 512 latency regresses approximately **23% at one thread and 57% at six**
 relative to earlier medians. This candidate is not an across-shape speed win.
-Keep it as a bounded full-shape win pending root review; do not hide the
-short-shape cost or silently tune the threshold in the same experiment.
-A separate threshold experiment could exclude short shapes, after profiling
-packing cost versus contraction cost. No threshold sweep occurs here.
+A scratch-only shape logger checks the activation hypothesis: every linear
+callback at 512 has 1, 16, or 17 input rows. Therefore **packing never activates
+for this workload**. The query stream contributes one patch, not 32 rows.
+Raising the packing threshold cannot fix this measured short-shape regression.
+
+A fresh isolated one-thread prior-QK run gives median 1.684203624 seconds
+(one warmup, five samples), versus the candidate's 1.824304844 seconds.
+That narrows the observed difference to approximately 8.3%, suggesting the older
+baseline overstates the regression. It does not prove the remaining difference
+is noise. The nonpacking callback now includes dispatch to a helper that rejects
+short rows; compiler layout or dispatch overhead may also contribute.
+Neither hardware counters nor instruction-level attribution establishes a cause.
+No fresh six-thread control runs, and no thermal explanation is assumed.
+
+Keep this as a bounded full-shape win for root review, not an unconditional
+cross-shape acceptance. Root must weigh the remaining short-shape cost.
+A separate experiment can place the eligibility guard in the caller or isolate
+the unchanged short path, then remeasure both shapes. No threshold sweep or
+additional runtime change occurs in this follow-up.
 
 The cold 56.13-second result still exceeds the full one-thread gate's
 21.57-second limit by a substantial margin. Cold versus warm comparison is
@@ -114,3 +128,5 @@ TIMESTRAL_TEST_GGUF="$MODEL" "$BUILD/tests/test_forecast_determinism" --real-512
 | `determinism-tiny.log`, `determinism-512.log` | Actual forecast byte comparisons |
 | `native-512-1.json`, `native-512-6.json`, `native-32k-1.json` | Completed measurements |
 | `candidate-binaries.sha256`, `source-commit.txt` | Candidate hashes and source pin |
+| `layers-shapes.cpp`, `shape-build.log`, `shapes-512.log` | Scratch-only activation audit; all rows below 32 |
+| `fresh-baseline-512-1.json`, matching `.log` | Fresh prior-QK one-thread warm control |
