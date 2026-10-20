@@ -197,3 +197,50 @@ Each host record includes load, CPU pressure, cgroup quota/counters, and process
 CPU snapshots. The screening job exits zero after completing its bounded wait;
 that exit status indicates monitoring completion, not benchmark acceptance.
 Root owns authorization of any later measurement window or next scope.
+
+## Second retention attempt: invalidated by CPU availability
+
+Root authorizes one further attempt in separate scratch `retention-2`.
+Initial screening qualifies after three samples at 20-second intervals:
+load/pressure pairs **8.72/3.40%, 8.49/4.46%, 9.37/5.44%**.
+Preflight then stops on a historical test-binary hash mismatch.
+Only `build-j2/tests/test_attention` differs from the original correctness
+manifest: the approved test-only follow-up intentionally rebuilt it.
+Its current SHA-256 matches the archived follow-up optimized test exactly:
+`28c06940e378e9233c99cf2d683285a7dc01e251f89b2599cdbe0f2e9c4f5d51`.
+All four follow-up pins pass. The original candidate CLI, source base/patch,
+forecast, and determinism hashes pass; runtime sources match `35fdc68`.
+The original failed hash log remains preserved, not rewritten.
+
+The first continuation job is explicitly stopped before any benchmark child
+launches, honoring root's stop-and-diagnose request. A process inspection finds
+no leftover benchmark child. A benchmark-specific manifest pins baseline and
+candidate CLI binaries and archived sources; no builds occur.
+Because the initial window is stale, continuation rescreens into new files.
+No initial screening or partial measurement files are overwritten.
+
+Rescreening qualifies at samples 8/9/10, with load/pressure pairs
+**11.92/6.84%, 10.47/4.36%, 8.63/3.29%**.
+After cooldown, only the baseline 512/32 one-thread configuration runs:
+one warmup, five samples, median **1.675918730 seconds**, exit zero.
+However, process accounting records **10.14 s user + 0.39 s system** versus
+**13.81 s wall**, only **76% CPU**. Before/after host snapshots remain below
+the screening bounds, demonstrating that these snapshots alone cannot establish
+uninterrupted CPU availability. No particular contention mechanism is proven.
+
+**This measurement is invalid for retention. No candidate, six-thread, or 32k
+configuration runs. Performance remains UNDECIDED.**
+The control script conservatively stops when one-thread process CPU utilization
+falls below 95%, a resource-quality screen—not a numerical/performance-gate
+relaxation. No useful baseline/candidate performance comparison exists here.
+All four benchmark-specific source/archive/CLI pins match before/after.
+No new attempt, runtime change, unrelated process termination, or configuration
+change follows this decision. Root owns further measurement authorization.
+
+Evidence under `timestral-native/m6c-keypack/retention-2`:
+`screening.jsonl`, `qualified.json`, `screen-*.log`,
+`m6c-keypack-prior-hashes.log`, `m6c-row4-prior-hashes.log`,
+`followup-hashes.log`, `pins-before.json`, `pins-after.json`,
+`baseline-source.tar`, `candidate-source.tar`, `rescreening.jsonl`,
+`rescreen-*.log`, `baseline-512-1.json`, `baseline-512-1.log`,
+`baseline-512-1-host.json`, matching before/after snapshots, and `interrupted.txt`.
