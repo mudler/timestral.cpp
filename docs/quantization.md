@@ -1,7 +1,7 @@
 # Quantization evaluation design
 
 This document defines the approved M7 evaluation contracts, not an implemented evaluator or completed acceptance run.
-The 64-series specification below remains pending review.
+The 64-series composition has conditional approval; its explicit mappings, options, and anchor extraction design await final review.
 No measurements or model artifacts accompany this document.
 
 ## Scope and invariants
@@ -95,8 +95,51 @@ Do not replace denominators with epsilons or silently omit rows.
 
 ### Normalized deviation
 
-Use the fixed F32 C++ anchor location `l` and scale `s` for each target row.
-Use that same anchor for every precision.
+Use the original positive-pass, initial-context F32 C++ target anchor defined below.
+Freeze its F32 location `l` and scale `s` across every horizon step and both symmetric passes.
+Use that same stored anchor for every precision; quantized evaluation must never recompute the metric anchor.
+
+#### Exact anchor source and extraction design
+
+The anchor is `BlockPrediction.loc` and `BlockPrediction.scale` from the first positive call to `PredictBlock::predict`.
+Capture these values before `refine_block`, autoregressive feedback, mirroring, output capping, or nonnegative clipping.
+Use final F32 forecasts after all those operations as `f`; do not replace them with positive-pass predictions.
+
+`Forecaster::forecast` first calls `assemble_rows` on the original request.
+That path applies observation masking, target preparation, categorical encoding, context capping, and left padding.
+The cap keeps the last `min(request.length, 32768)` steps; padding adds zero values with false masks on the left.
+Use this prepared context, not raw input arrays or a hand-written sample standard deviation.
+
+For a context-only prediction, `context_only` calls `scale_rows` on that prepared context of length `T0`.
+It selects `scaled.loc[r*T0 + T0-1]` and the corresponding scale.
+For covariate predictions, `predict` constructs length `W=T0+h*patch_size`, including the first block's prepared future and masks.
+It calls `scale_rows`, then `overwrite_known_rows`, before selecting anchors.
+With `L=T0/patch_size`, it selects `scaled.loc[r*W + (L-1)*patch_size]` and the corresponding scale.
+These are the exact existing selections in `src/predict_block.cpp`, not alternative metric formulas.
+
+Packed rows are contiguous by batch, with targets before past and known covariate rows.
+Let `all=rows_count/batch`; target `(b,v)` maps to packed row `r=b*all+v`.
+Store its anchor at metric row `b*targets+v`.
+Final forecasts have layout `(B,V,H,Q)`; all `H*Q` elements of that metric row share this anchor.
+This matches the final-output mapping in `tests/test_forecast.cpp` from `pos.b0.anchor.loc` and `pos.b0.anchor.scale`.
+Those baseline fields come from the reference denormalization hook; they are corroborating parity artifacts, not substitutes for native F32 anchors.
+
+The current native `ForecastTrace` does not expose anchors.
+Its `positive[0]` block exposes `offset`, `patches`, `length`, `context`, `mask`, `future`, and `future_mask`.
+It omits `BlockPrediction.loc/scale`, groups, and roles.
+Do not claim that anchors are already available through this trace.
+
+For a future evaluation driver, reuse a shared preparation/scaling helper extracted from `PredictBlock::predict` and `context_only`.
+The helper must preserve their exact full-window construction, known-row replacement, and anchor selection without running another model prediction.
+Obtain groups, roles, and row counts through the existing `assemble_rows` path with the frozen F32 configuration.
+Use the first positive trace block's exact context, masks, future, and patch count for helper inputs.
+Require block offset zero and equality of trace context/mask with the initial assembled rows/mask.
+Require trace future/future-mask equality with the assembled future's first `patches*patch_size` columns per row.
+Then select target anchors.
+Factor this helper rather than duplicating scaler equations in Python or the driver.
+Such a refactor needs separate implementation authorization and parity checks; this document implements no extraction API.
+A driver must HOLD evaluation until it can extract these exact native anchors.
+
 Let `f[i]` denote F32 C++ forecasts and `q[i]` denote reduced-precision forecasts.
 Include all horizon steps and quantiles within each row.
 
@@ -202,9 +245,52 @@ Do not require per-case, maximum-error, WQL, or MASE monotonicity.
 A tie or reversal fails the strict-order target; report measured results without sorting or adding slack.
 Any target change requires a separate measured decision under the plan.
 
-## Pending review: frozen 64-series specification
+## Conditionally approved: frozen 64-series specification
 
-This section proposes `synthetic64-v1`; it is not yet approved for execution or acceptance.
+The family composition has conditional approval, subject to review of the explicit inputs and options below.
+Implementation and acceptance execution remain on HOLD.
+The [generator-shaped case mappings](synthetic64-v1.cases.json) contain all 64 inputs, not golden baselines or forecast results.
+The JSON uses the existing `version` and `cases` shape; it does not embed forecast options unsupported by that schema.
+Apply the following resolved options to every item instead of relying on evolving defaults.
+
+### Frozen forecast options and provenance
+
+Use the pinned 209M configuration at Hub revision `9874d252ab0aae16f7f7c999f98f98d6ad7d8365`.
+Its configuration values below come from PLAN A.0; constructor defaults come from the converter, not Hub configuration fields.
+The upstream algorithm pin is `a534bdbd244d64f3d9d743f46c7bf6fc330ed4ff` (`NOTICE` and converter `CODE_SHA`).
+The inspected native source snapshot is `8017889c84c5540ad852e1c57dbc9b6185a88f9d`.
+
+| Resolved option | Value | Source |
+|---|---|---|
+| Symmetric averaging | `true` | Converter `DEFAULT_FORECASTER`; native `Forecaster::forecast`. |
+| Nonnegative clipping | `true` | Same sources; native eligibility uses original observed target context. |
+| Maximum context | `32768` steps | PLAN A.0 `context_length`; native zero request resolves to that value. Set it explicitly for evaluation. |
+| Per-shot horizon | `32` patches | Converter default; native decode limits it to configuration `block_size=32`. |
+| Patch size | `32` | PLAN A.0 configuration. |
+| Quantile real cap | `10000.0` | Converter default; native `Forecaster::raw`. |
+| Extreme feedback threshold | `1e30` | Converter default; native `Forecaster::decode`. |
+| Refinement | Call `refine_block` for every block; bypass only when that block has <=1 patch. | Native decode and `src/refine.cpp`; no request-level refine switch exists. |
+| Refinement targets | Target rows only when covariate roles exist; otherwise all packed rows. | Native decode creates `role==0` selection. |
+| Scaling | `minimum_scale=1e-6`, `use_asinh=true`, global stabilization `false` | PLAN A.0 configuration. |
+| User observation mask | Absent | Missingness comes only from each case's generated values. |
+
+Use the converter's stored metadata for non-request options and check these resolved values before evaluation.
+Do not change a mismatching model's metadata to force compatibility.
+Evaluate complete free-running forecasts, including refinement, both symmetric passes, caps, and eligible clipping.
+
+Source blobs at the inspected snapshot:
+
+| Path | Git blob |
+|---|---|
+| `scripts/gen_reference_baseline.py` | `d52f28677fa238222e9d4bdd231e2744cae19a5f` |
+| `scripts/convert_timestral_to_gguf.py` | `91e298b85b61b62f5e1254d2ca8387fc88b70f6c` |
+| `src/forecaster.cpp` | `15670621fd63332669eede77084f950bb23093a6` |
+| `src/predict_block.cpp` | `af43189bf93128e47cec35281b20fe87ea3899df` |
+| `src/covariates.cpp` | `5bbf3e89600c4ef8600ff3f780b223e9cc1ab963` |
+| `src/refine.cpp` | `912cf46c32a778d9df4b2b7423ec2adb49de4760` |
+
+### Input mappings
+
 Use eight families with eight seeds each, giving exactly 64 evaluation items.
 Each item has `B=1`; `V` specifies its target variates.
 For family `f` in `0..7` and replicate `j` in `0..7`, use seed `20000 + 8*f + j`.

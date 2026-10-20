@@ -1,0 +1,1341 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "name": "synth-f0-r0",
+      "B": 1,
+      "V": 1,
+      "T": 512,
+      "H": 96,
+      "seed": 20000,
+      "series": {
+        "period": 24,
+        "level": 100,
+        "trend": 0,
+        "noise_std": 1
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f0-r1",
+      "B": 1,
+      "V": 1,
+      "T": 512,
+      "H": 96,
+      "seed": 20001,
+      "series": {
+        "period": 24,
+        "level": 100,
+        "trend": 0,
+        "noise_std": 1
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f0-r2",
+      "B": 1,
+      "V": 1,
+      "T": 512,
+      "H": 96,
+      "seed": 20002,
+      "series": {
+        "period": 24,
+        "level": 100,
+        "trend": 0,
+        "noise_std": 1
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f0-r3",
+      "B": 1,
+      "V": 1,
+      "T": 512,
+      "H": 96,
+      "seed": 20003,
+      "series": {
+        "period": 24,
+        "level": 100,
+        "trend": 0,
+        "noise_std": 1
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f0-r4",
+      "B": 1,
+      "V": 1,
+      "T": 512,
+      "H": 96,
+      "seed": 20004,
+      "series": {
+        "period": 24,
+        "level": 100,
+        "trend": 0,
+        "noise_std": 1
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f0-r5",
+      "B": 1,
+      "V": 1,
+      "T": 512,
+      "H": 96,
+      "seed": 20005,
+      "series": {
+        "period": 24,
+        "level": 100,
+        "trend": 0,
+        "noise_std": 1
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f0-r6",
+      "B": 1,
+      "V": 1,
+      "T": 512,
+      "H": 96,
+      "seed": 20006,
+      "series": {
+        "period": 24,
+        "level": 100,
+        "trend": 0,
+        "noise_std": 1
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f0-r7",
+      "B": 1,
+      "V": 1,
+      "T": 512,
+      "H": 96,
+      "seed": 20007,
+      "series": {
+        "period": 24,
+        "level": 100,
+        "trend": 0,
+        "noise_std": 1
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f1-r0",
+      "B": 1,
+      "V": 1,
+      "T": 500,
+      "H": 65,
+      "seed": 20008,
+      "series": {
+        "period": 16,
+        "level": -20,
+        "trend": -0.02,
+        "noise_std": 0.7
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f1-r1",
+      "B": 1,
+      "V": 1,
+      "T": 500,
+      "H": 65,
+      "seed": 20009,
+      "series": {
+        "period": 16,
+        "level": -20,
+        "trend": -0.02,
+        "noise_std": 0.7
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f1-r2",
+      "B": 1,
+      "V": 1,
+      "T": 500,
+      "H": 65,
+      "seed": 20010,
+      "series": {
+        "period": 16,
+        "level": -20,
+        "trend": -0.02,
+        "noise_std": 0.7
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f1-r3",
+      "B": 1,
+      "V": 1,
+      "T": 500,
+      "H": 65,
+      "seed": 20011,
+      "series": {
+        "period": 16,
+        "level": -20,
+        "trend": -0.02,
+        "noise_std": 0.7
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f1-r4",
+      "B": 1,
+      "V": 1,
+      "T": 500,
+      "H": 65,
+      "seed": 20012,
+      "series": {
+        "period": 16,
+        "level": -20,
+        "trend": -0.02,
+        "noise_std": 0.7
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f1-r5",
+      "B": 1,
+      "V": 1,
+      "T": 500,
+      "H": 65,
+      "seed": 20013,
+      "series": {
+        "period": 16,
+        "level": -20,
+        "trend": -0.02,
+        "noise_std": 0.7
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f1-r6",
+      "B": 1,
+      "V": 1,
+      "T": 500,
+      "H": 65,
+      "seed": 20014,
+      "series": {
+        "period": 16,
+        "level": -20,
+        "trend": -0.02,
+        "noise_std": 0.7
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f1-r7",
+      "B": 1,
+      "V": 1,
+      "T": 500,
+      "H": 65,
+      "seed": 20015,
+      "series": {
+        "period": 16,
+        "level": -20,
+        "trend": -0.02,
+        "noise_std": 0.7
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f2-r0",
+      "B": 1,
+      "V": 3,
+      "T": 1000,
+      "H": 64,
+      "seed": 20016,
+      "series": {
+        "period": 30,
+        "level": 50,
+        "trend": 0.01,
+        "noise_std": 1
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f2-r1",
+      "B": 1,
+      "V": 3,
+      "T": 1000,
+      "H": 64,
+      "seed": 20017,
+      "series": {
+        "period": 30,
+        "level": 50,
+        "trend": 0.01,
+        "noise_std": 1
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f2-r2",
+      "B": 1,
+      "V": 3,
+      "T": 1000,
+      "H": 64,
+      "seed": 20018,
+      "series": {
+        "period": 30,
+        "level": 50,
+        "trend": 0.01,
+        "noise_std": 1
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f2-r3",
+      "B": 1,
+      "V": 3,
+      "T": 1000,
+      "H": 64,
+      "seed": 20019,
+      "series": {
+        "period": 30,
+        "level": 50,
+        "trend": 0.01,
+        "noise_std": 1
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f2-r4",
+      "B": 1,
+      "V": 3,
+      "T": 1000,
+      "H": 64,
+      "seed": 20020,
+      "series": {
+        "period": 30,
+        "level": 50,
+        "trend": 0.01,
+        "noise_std": 1
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f2-r5",
+      "B": 1,
+      "V": 3,
+      "T": 1000,
+      "H": 64,
+      "seed": 20021,
+      "series": {
+        "period": 30,
+        "level": 50,
+        "trend": 0.01,
+        "noise_std": 1
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f2-r6",
+      "B": 1,
+      "V": 3,
+      "T": 1000,
+      "H": 64,
+      "seed": 20022,
+      "series": {
+        "period": 30,
+        "level": 50,
+        "trend": 0.01,
+        "noise_std": 1
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f2-r7",
+      "B": 1,
+      "V": 3,
+      "T": 1000,
+      "H": 64,
+      "seed": 20023,
+      "series": {
+        "period": 30,
+        "level": 50,
+        "trend": 0.01,
+        "noise_std": 1
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f3-r0",
+      "B": 1,
+      "V": 1,
+      "T": 900,
+      "H": 64,
+      "seed": 20024,
+      "series": {
+        "period": 24,
+        "level": 15,
+        "trend": 0,
+        "noise_std": 1
+      },
+      "missing": {
+        "leading": 100,
+        "missing_patches": [
+          12
+        ],
+        "scattered_frac": 0.03,
+        "all_missing_series": []
+      },
+      "past": {
+        "numeric": 1,
+        "nan_frac": 0.1
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f3-r1",
+      "B": 1,
+      "V": 1,
+      "T": 900,
+      "H": 64,
+      "seed": 20025,
+      "series": {
+        "period": 24,
+        "level": 15,
+        "trend": 0,
+        "noise_std": 1
+      },
+      "missing": {
+        "leading": 100,
+        "missing_patches": [
+          12
+        ],
+        "scattered_frac": 0.03,
+        "all_missing_series": []
+      },
+      "past": {
+        "numeric": 1,
+        "nan_frac": 0.1
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f3-r2",
+      "B": 1,
+      "V": 1,
+      "T": 900,
+      "H": 64,
+      "seed": 20026,
+      "series": {
+        "period": 24,
+        "level": 15,
+        "trend": 0,
+        "noise_std": 1
+      },
+      "missing": {
+        "leading": 100,
+        "missing_patches": [
+          12
+        ],
+        "scattered_frac": 0.03,
+        "all_missing_series": []
+      },
+      "past": {
+        "numeric": 1,
+        "nan_frac": 0.1
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f3-r3",
+      "B": 1,
+      "V": 1,
+      "T": 900,
+      "H": 64,
+      "seed": 20027,
+      "series": {
+        "period": 24,
+        "level": 15,
+        "trend": 0,
+        "noise_std": 1
+      },
+      "missing": {
+        "leading": 100,
+        "missing_patches": [
+          12
+        ],
+        "scattered_frac": 0.03,
+        "all_missing_series": []
+      },
+      "past": {
+        "numeric": 1,
+        "nan_frac": 0.1
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f3-r4",
+      "B": 1,
+      "V": 1,
+      "T": 900,
+      "H": 64,
+      "seed": 20028,
+      "series": {
+        "period": 24,
+        "level": 15,
+        "trend": 0,
+        "noise_std": 1
+      },
+      "missing": {
+        "leading": 100,
+        "missing_patches": [
+          12
+        ],
+        "scattered_frac": 0.03,
+        "all_missing_series": []
+      },
+      "past": {
+        "numeric": 1,
+        "nan_frac": 0.1
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f3-r5",
+      "B": 1,
+      "V": 1,
+      "T": 900,
+      "H": 64,
+      "seed": 20029,
+      "series": {
+        "period": 24,
+        "level": 15,
+        "trend": 0,
+        "noise_std": 1
+      },
+      "missing": {
+        "leading": 100,
+        "missing_patches": [
+          12
+        ],
+        "scattered_frac": 0.03,
+        "all_missing_series": []
+      },
+      "past": {
+        "numeric": 1,
+        "nan_frac": 0.1
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f3-r6",
+      "B": 1,
+      "V": 1,
+      "T": 900,
+      "H": 64,
+      "seed": 20030,
+      "series": {
+        "period": 24,
+        "level": 15,
+        "trend": 0,
+        "noise_std": 1
+      },
+      "missing": {
+        "leading": 100,
+        "missing_patches": [
+          12
+        ],
+        "scattered_frac": 0.03,
+        "all_missing_series": []
+      },
+      "past": {
+        "numeric": 1,
+        "nan_frac": 0.1
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f3-r7",
+      "B": 1,
+      "V": 1,
+      "T": 900,
+      "H": 64,
+      "seed": 20031,
+      "series": {
+        "period": 24,
+        "level": 15,
+        "trend": 0,
+        "noise_std": 1
+      },
+      "missing": {
+        "leading": 100,
+        "missing_patches": [
+          12
+        ],
+        "scattered_frac": 0.03,
+        "all_missing_series": []
+      },
+      "past": {
+        "numeric": 1,
+        "nan_frac": 0.1
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f4-r0",
+      "B": 1,
+      "V": 1,
+      "T": 800,
+      "H": 1100,
+      "seed": 20032,
+      "series": {
+        "period": 48,
+        "level": 30,
+        "trend": 0.02,
+        "noise_std": 1
+      },
+      "known": {
+        "numeric": 1,
+        "indicator": 1,
+        "nan_frac": 0
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f4-r1",
+      "B": 1,
+      "V": 1,
+      "T": 800,
+      "H": 1100,
+      "seed": 20033,
+      "series": {
+        "period": 48,
+        "level": 30,
+        "trend": 0.02,
+        "noise_std": 1
+      },
+      "known": {
+        "numeric": 1,
+        "indicator": 1,
+        "nan_frac": 0
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f4-r2",
+      "B": 1,
+      "V": 1,
+      "T": 800,
+      "H": 1100,
+      "seed": 20034,
+      "series": {
+        "period": 48,
+        "level": 30,
+        "trend": 0.02,
+        "noise_std": 1
+      },
+      "known": {
+        "numeric": 1,
+        "indicator": 1,
+        "nan_frac": 0
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f4-r3",
+      "B": 1,
+      "V": 1,
+      "T": 800,
+      "H": 1100,
+      "seed": 20035,
+      "series": {
+        "period": 48,
+        "level": 30,
+        "trend": 0.02,
+        "noise_std": 1
+      },
+      "known": {
+        "numeric": 1,
+        "indicator": 1,
+        "nan_frac": 0
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f4-r4",
+      "B": 1,
+      "V": 1,
+      "T": 800,
+      "H": 1100,
+      "seed": 20036,
+      "series": {
+        "period": 48,
+        "level": 30,
+        "trend": 0.02,
+        "noise_std": 1
+      },
+      "known": {
+        "numeric": 1,
+        "indicator": 1,
+        "nan_frac": 0
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f4-r5",
+      "B": 1,
+      "V": 1,
+      "T": 800,
+      "H": 1100,
+      "seed": 20037,
+      "series": {
+        "period": 48,
+        "level": 30,
+        "trend": 0.02,
+        "noise_std": 1
+      },
+      "known": {
+        "numeric": 1,
+        "indicator": 1,
+        "nan_frac": 0
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f4-r6",
+      "B": 1,
+      "V": 1,
+      "T": 800,
+      "H": 1100,
+      "seed": 20038,
+      "series": {
+        "period": 48,
+        "level": 30,
+        "trend": 0.02,
+        "noise_std": 1
+      },
+      "known": {
+        "numeric": 1,
+        "indicator": 1,
+        "nan_frac": 0
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f4-r7",
+      "B": 1,
+      "V": 1,
+      "T": 800,
+      "H": 1100,
+      "seed": 20039,
+      "series": {
+        "period": 48,
+        "level": 30,
+        "trend": 0.02,
+        "noise_std": 1
+      },
+      "known": {
+        "numeric": 1,
+        "indicator": 1,
+        "nan_frac": 0
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f5-r0",
+      "B": 1,
+      "V": 1,
+      "T": 600,
+      "H": 40,
+      "seed": 20040,
+      "series": {
+        "period": 12,
+        "level": 5,
+        "trend": 0,
+        "noise_std": 0.8
+      },
+      "cat_past": {
+        "rows": 1,
+        "n_codes": 5,
+        "nan_frac": 0.05,
+        "unseen_in_horizon": false
+      },
+      "cat_known": {
+        "rows": 1,
+        "n_codes": 5,
+        "nan_frac": 0.05,
+        "unseen_in_horizon": true
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f5-r1",
+      "B": 1,
+      "V": 1,
+      "T": 600,
+      "H": 40,
+      "seed": 20041,
+      "series": {
+        "period": 12,
+        "level": 5,
+        "trend": 0,
+        "noise_std": 0.8
+      },
+      "cat_past": {
+        "rows": 1,
+        "n_codes": 5,
+        "nan_frac": 0.05,
+        "unseen_in_horizon": false
+      },
+      "cat_known": {
+        "rows": 1,
+        "n_codes": 5,
+        "nan_frac": 0.05,
+        "unseen_in_horizon": true
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f5-r2",
+      "B": 1,
+      "V": 1,
+      "T": 600,
+      "H": 40,
+      "seed": 20042,
+      "series": {
+        "period": 12,
+        "level": 5,
+        "trend": 0,
+        "noise_std": 0.8
+      },
+      "cat_past": {
+        "rows": 1,
+        "n_codes": 5,
+        "nan_frac": 0.05,
+        "unseen_in_horizon": false
+      },
+      "cat_known": {
+        "rows": 1,
+        "n_codes": 5,
+        "nan_frac": 0.05,
+        "unseen_in_horizon": true
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f5-r3",
+      "B": 1,
+      "V": 1,
+      "T": 600,
+      "H": 40,
+      "seed": 20043,
+      "series": {
+        "period": 12,
+        "level": 5,
+        "trend": 0,
+        "noise_std": 0.8
+      },
+      "cat_past": {
+        "rows": 1,
+        "n_codes": 5,
+        "nan_frac": 0.05,
+        "unseen_in_horizon": false
+      },
+      "cat_known": {
+        "rows": 1,
+        "n_codes": 5,
+        "nan_frac": 0.05,
+        "unseen_in_horizon": true
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f5-r4",
+      "B": 1,
+      "V": 1,
+      "T": 600,
+      "H": 40,
+      "seed": 20044,
+      "series": {
+        "period": 12,
+        "level": 5,
+        "trend": 0,
+        "noise_std": 0.8
+      },
+      "cat_past": {
+        "rows": 1,
+        "n_codes": 5,
+        "nan_frac": 0.05,
+        "unseen_in_horizon": false
+      },
+      "cat_known": {
+        "rows": 1,
+        "n_codes": 5,
+        "nan_frac": 0.05,
+        "unseen_in_horizon": true
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f5-r5",
+      "B": 1,
+      "V": 1,
+      "T": 600,
+      "H": 40,
+      "seed": 20045,
+      "series": {
+        "period": 12,
+        "level": 5,
+        "trend": 0,
+        "noise_std": 0.8
+      },
+      "cat_past": {
+        "rows": 1,
+        "n_codes": 5,
+        "nan_frac": 0.05,
+        "unseen_in_horizon": false
+      },
+      "cat_known": {
+        "rows": 1,
+        "n_codes": 5,
+        "nan_frac": 0.05,
+        "unseen_in_horizon": true
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f5-r6",
+      "B": 1,
+      "V": 1,
+      "T": 600,
+      "H": 40,
+      "seed": 20046,
+      "series": {
+        "period": 12,
+        "level": 5,
+        "trend": 0,
+        "noise_std": 0.8
+      },
+      "cat_past": {
+        "rows": 1,
+        "n_codes": 5,
+        "nan_frac": 0.05,
+        "unseen_in_horizon": false
+      },
+      "cat_known": {
+        "rows": 1,
+        "n_codes": 5,
+        "nan_frac": 0.05,
+        "unseen_in_horizon": true
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f5-r7",
+      "B": 1,
+      "V": 1,
+      "T": 600,
+      "H": 40,
+      "seed": 20047,
+      "series": {
+        "period": 12,
+        "level": 5,
+        "trend": 0,
+        "noise_std": 0.8
+      },
+      "cat_past": {
+        "rows": 1,
+        "n_codes": 5,
+        "nan_frac": 0.05,
+        "unseen_in_horizon": false
+      },
+      "cat_known": {
+        "rows": 1,
+        "n_codes": 5,
+        "nan_frac": 0.05,
+        "unseen_in_horizon": true
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f6-r0",
+      "B": 1,
+      "V": 1,
+      "T": 700,
+      "H": 64,
+      "seed": 20048,
+      "series": {
+        "period": 24,
+        "level": 1000000,
+        "trend": 0,
+        "noise_std": 50,
+        "positive": true
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f6-r1",
+      "B": 1,
+      "V": 1,
+      "T": 700,
+      "H": 64,
+      "seed": 20049,
+      "series": {
+        "period": 24,
+        "level": 1000000,
+        "trend": 0,
+        "noise_std": 50,
+        "positive": true
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f6-r2",
+      "B": 1,
+      "V": 1,
+      "T": 700,
+      "H": 64,
+      "seed": 20050,
+      "series": {
+        "period": 24,
+        "level": 1000000,
+        "trend": 0,
+        "noise_std": 50,
+        "positive": true
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f6-r3",
+      "B": 1,
+      "V": 1,
+      "T": 700,
+      "H": 64,
+      "seed": 20051,
+      "series": {
+        "period": 24,
+        "level": 1000000,
+        "trend": 0,
+        "noise_std": 50,
+        "positive": true
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f6-r4",
+      "B": 1,
+      "V": 1,
+      "T": 700,
+      "H": 64,
+      "seed": 20052,
+      "series": {
+        "period": 24,
+        "level": 1000000,
+        "trend": 0,
+        "noise_std": 50,
+        "positive": true
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f6-r5",
+      "B": 1,
+      "V": 1,
+      "T": 700,
+      "H": 64,
+      "seed": 20053,
+      "series": {
+        "period": 24,
+        "level": 1000000,
+        "trend": 0,
+        "noise_std": 50,
+        "positive": true
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f6-r6",
+      "B": 1,
+      "V": 1,
+      "T": 700,
+      "H": 64,
+      "seed": 20054,
+      "series": {
+        "period": 24,
+        "level": 1000000,
+        "trend": 0,
+        "noise_std": 50,
+        "positive": true
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f6-r7",
+      "B": 1,
+      "V": 1,
+      "T": 700,
+      "H": 64,
+      "seed": 20055,
+      "series": {
+        "period": 24,
+        "level": 1000000,
+        "trend": 0,
+        "noise_std": 50,
+        "positive": true
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f7-r0",
+      "B": 1,
+      "V": 1,
+      "T": 512,
+      "H": 64,
+      "seed": 20056,
+      "series": {
+        "period": 24,
+        "level": 0,
+        "trend": 0,
+        "noise_std": 1,
+        "constant": 5
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f7-r1",
+      "B": 1,
+      "V": 1,
+      "T": 512,
+      "H": 64,
+      "seed": 20057,
+      "series": {
+        "period": 24,
+        "level": 0,
+        "trend": 0,
+        "noise_std": 1,
+        "constant": 5
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f7-r2",
+      "B": 1,
+      "V": 1,
+      "T": 512,
+      "H": 64,
+      "seed": 20058,
+      "series": {
+        "period": 24,
+        "level": 0,
+        "trend": 0,
+        "noise_std": 1,
+        "constant": 5
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f7-r3",
+      "B": 1,
+      "V": 1,
+      "T": 512,
+      "H": 64,
+      "seed": 20059,
+      "series": {
+        "period": 24,
+        "level": 0,
+        "trend": 0,
+        "noise_std": 1,
+        "constant": 5
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f7-r4",
+      "B": 1,
+      "V": 1,
+      "T": 512,
+      "H": 64,
+      "seed": 20060,
+      "series": {
+        "period": 24,
+        "level": 0,
+        "trend": 0,
+        "noise_std": 1,
+        "constant": 5
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f7-r5",
+      "B": 1,
+      "V": 1,
+      "T": 512,
+      "H": 64,
+      "seed": 20061,
+      "series": {
+        "period": 24,
+        "level": 0,
+        "trend": 0,
+        "noise_std": 1,
+        "constant": 5
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f7-r6",
+      "B": 1,
+      "V": 1,
+      "T": 512,
+      "H": 64,
+      "seed": 20062,
+      "series": {
+        "period": 24,
+        "level": 0,
+        "trend": 0,
+        "noise_std": 1,
+        "constant": 5
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    },
+    {
+      "name": "synth-f7-r7",
+      "B": 1,
+      "V": 1,
+      "T": 512,
+      "H": 64,
+      "seed": 20063,
+      "series": {
+        "period": 24,
+        "level": 0,
+        "trend": 0,
+        "noise_std": 1,
+        "constant": 5
+      },
+      "labels": [],
+      "layers": "all",
+      "tiny": false
+    }
+  ]
+}
