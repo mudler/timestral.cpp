@@ -38,7 +38,14 @@ Csv read_csv(const std::string& path) {
             std::string lower=token;for(char& c:lower)if(c>='A'&&c<='Z')c=char(c-'A'+'a');
             double value=std::numeric_limits<double>::quiet_NaN();
             if(!token.empty() && lower!="nan") {
-                auto first=token.data();if(*first=='+')++first;
+                auto first=token.data();
+                // from_chars accepts a leading minus but not plus. Strip a
+                // single plus only; never turn '+-1' into a valid '-1'.
+                if(*first=='+') {
+                    ++first;
+                    if(first==token.data()+token.size() || *first=='+' || *first=='-')
+                        throw InputError(path+":"+std::to_string(result.rows+1)+":"+std::to_string(col+1)+": invalid numeric sign");
+                }
                 auto parsed=std::from_chars(first,token.data()+token.size(),value,std::chars_format::general);
                 if(first==token.data()+token.size() || parsed.ec!=std::errc{} || parsed.ptr!=token.data()+token.size() || !std::isfinite(value))
                     throw InputError(path+":"+std::to_string(result.rows+1)+":"+std::to_string(col+1)+": invalid finite number or missing value");

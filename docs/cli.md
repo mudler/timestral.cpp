@@ -104,3 +104,31 @@ Evidence under `timestral-native/m8-cli`, relative to the work root:
 `source-commit.txt`. The archive/CLI/shared-library hashes match before/after
 final direct suites. The CTest log precedes the final output-flush adjustment;
 final direct suites rerun the same harness on the final binary.
+
+
+## Numeric-sign parser correction
+
+Review reproduced acceptance of malformed `+-1` and `+-1e2` by the original
+transport: removing a leading plus exposed a minus accepted by from_chars.
+The parser now permits only a single leading sign. Malformed double signs and
+a lone plus return input status 2 with file/row/column diagnostics. Regression
+cases include `+-1`, `+-1e2`, `++1`, `--1`, and `+`; valid `+1.0e0` remains
+covered. This correction changes only CLI parsing, tests, and documentation.
+
+The correction is tested from an isolated archive of `cf2bf33` with only these
+three CLI/test/documentation changes and the pinned ggml source. It does not
+include concurrent F16 runtime/converter edits in the shared worktree.
+The old binary reproduces both malformed signs with success status zero;
+the extended harness fails against it. The isolated corrected binary passes
+**39 process checks / 6 bytewise comparisons**, including valid positive and
+negative signed exponents, all malformed-sign cases, CSV/JSON, tiny inference,
+and the existing bench contract. Final-binary CTest passes **1/1** and the
+/dev/full output-error probe returns 1. No redundant real fixture replay runs
+because runtime/C ABI source is exactly the reviewed baseline.
+
+Evidence under `timestral-native/m8-cli-sign`: `base.tar`, `ggml.tar`,
+`ggml-pin.txt`, `red-sign-harness.log`, `configure.log`, `build.log`,
+`green-harness.log`, `green-ctest.log`, `output-failure.log`, `tested-source.tar`,
+`before.json`, and `after.json`. Source archive, CLI, and shared-library hashes
+match before/after testing. The tested archive precedes this results paragraph;
+implementation and test content match the committed fix.

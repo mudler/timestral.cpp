@@ -125,7 +125,7 @@ def main():
         compare("batch-all-cov", cov, 2, 1, 32, 8, csv_output=True)
         good = root / "good.csv"; good.write_text("1\n2\n")
         base = ["forecast", "--model", a.model, "--context", str(good), "--horizon", "1"]
-        for token in ["inf", "-inf", "1junk", "header", "0x10", "nan(payload)", "1e999", "1e100"]:
+        for token in ["inf", "-inf", "1junk", "header", "0x10", "nan(payload)", "1e999", "1e100", "+-1", "+-1e2", "++1", "--1", "+"]:
             bad = root / "bad.csv"; bad.write_text(token + "\n")
             r = run(["forecast", "--model", a.model, "--context", str(bad), "--horizon", "1"], 2)
             assert str(bad) + ":1:1:" in r.stderr
@@ -139,7 +139,7 @@ def main():
         run(base + ["--context", str(wide)], 2)
         run(base + ["--known-cov", str(good)], 2)
         run(base + ["--context", str(good), "--past-cov", str(good), "--past-cov", str(wide)], 2)
-        upper = root / "upper.csv"; upper.write_text("+1.0e0\r\n nAn \r\n")
+        upper = root / "upper.csv"; upper.write_text("+1.0e+0\r\n-1.0e-2\r\n nAn \r\n")
         run(["forecast", "--model", a.model, "--context", str(upper), "--horizon", "1", "--json"])
         run(base[:-1] + ["1", "--model", "absent"], 2)  # duplicate singleton
         missing_model = list(base); missing_model[2] = "absent"; run(missing_model, 1)
