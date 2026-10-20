@@ -5,6 +5,23 @@ import math
 import numpy as np
 
 
+STATUSES = frozenset({
+    'ok', 'zero-rms-identical', 'zero-rms-different', 'zero-truth-exact',
+    'zero-truth-inexact', 'zero-scale-exact', 'zero-scale-inexact',
+    'no-observed-adjacent-pairs', 'undefined-member', 'infinite-member',
+    'undefined-loss', 'indeterminate-infinite-baseline', 'zero-baseline-exact',
+    'zero-baseline-degraded',
+})
+
+
+def validate_score(score, nonnegative=True):
+    if not isinstance(score, Score) or score.status not in STATUSES:
+        raise ValueError('unknown score status or type')
+    if score.value is not None:
+        if math.isnan(score.value) or (nonnegative and score.value < 0):
+            raise ValueError('invalid metric operand')
+
+
 @dataclass(frozen=True)
 class Score:
     value: float | None
@@ -12,6 +29,7 @@ class Score:
 
     def json(self):
         """Strict JSON-safe tagged values, never nonstandard NaN/Infinity literals."""
+        validate_score(self, nonnegative=False)  # Signed relative-change output is valid.
         if self.value is None:
             return dict(value=None, kind='undefined', status=self.status)
         if math.isinf(self.value):
@@ -86,6 +104,8 @@ def mase(truth, median, context, max_context=32768):
 def average(scores):
     if not scores:
         raise ValueError('empty aggregate')
+    for score in scores:
+        validate_score(score)
     if any(s.value is None for s in scores):
         return Score(None, 'undefined-member')
     if any(math.isnan(s.value) or s.value < 0 for s in scores):
@@ -111,6 +131,8 @@ def summarize(items):
 
 
 def relative_change(f32, quantized):
+    validate_score(f32)
+    validate_score(quantized)
     f, q = f32.value, quantized.value
     if f is None or q is None:
         s = Score(None, 'undefined-loss')
@@ -128,6 +150,8 @@ def relative_change(f32, quantized):
 
 def coverage(expected_names, outcomes):
     """Error matches remain nonnumeric coverage gaps, never synthetic zero scores."""
+    if not expected_names:
+        raise ValueError('empty required coverage')
     if len(set(expected_names)) != len(expected_names) or set(expected_names) != set(outcomes):
         raise ValueError('coverage identities differ')
     allowed = {'forecast', 'expected-error-match', 'error-mismatch', 'missing'}
@@ -142,6 +166,8 @@ def monotonic(means):
     """Strict F32/F16/Q8_0/Q6_K/Q5_K/Q4_K normalized-mean order only."""
     if len(means) != 6:
         raise ValueError('six ordered formats required')
+    for score in means:
+        validate_score(score)
     values = [s.value for s in means]
     return (all(v is not None and math.isfinite(v) for v in values)
             and values[0] == 0 and all(a < b for a, b in zip(values, values[1:])))

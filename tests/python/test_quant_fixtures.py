@@ -5,6 +5,7 @@ import math
 from pathlib import Path
 import sys
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 
@@ -82,6 +83,35 @@ class Fixtures(unittest.TestCase):
                 row.append(10*math.sin(2*math.pi*(5+h)/(24*(1+.25*v)))+walk)
             expected.append(row)
         np.testing.assert_array_equal(qf.future_truth(case)[0], np.asarray(expected, np.float32))
+
+    def test_generator_mutation_fails_closed(self):
+        source = (qf.ROOT/'scripts/gen_reference_baseline.py').read_text()
+        changed = source.replace('rng = np.random.default_rng(case["seed"])',
+                                 'rng = np.random.default_rng(case["seed"] + 1)')
+        self.assertNotEqual(source, changed)
+        with patch.object(Path, 'read_text', return_value=changed):
+            with self.assertRaises(ValueError):
+                qf.input_generator()
+
+    def test_fullshape_identity_and_provenance(self):
+        source = (qf.ROOT/'scripts/gen_reference_baseline.py').read_text()
+        ns = dict(np=np, math=math)
+        exec(source[source.index('def make_inputs('):source.index('\n\ndef case_layers(')], ns)
+        for case in qf.load_cases():
+            with self.subTest(case=case['name']):
+                expected = ns['make_inputs'](case, 32)
+                inputs, truth, p = qf.make_fixture(case)
+                for key in expected:
+                    self.assertEqual(expected[key].tobytes(), inputs[key].tobytes())
+                    self.assertEqual(expected[key].shape, inputs[key].shape)
+                    self.assertEqual(expected[key].dtype, inputs[key].dtype)
+                    self.assertEqual(p['input_sha256'][key], qf.array_hash(inputs[key]))
+                self.assertEqual(p['options'], qf.OPTIONS)
+                self.assertEqual(p['truth_sha256'], qf.array_hash(truth))
+                for path, sha in p['source_sha256'].items():
+                    self.assertEqual(sha, qf.digest((qf.ROOT/path).read_bytes()))
+                if case['name'] == 'nans':
+                    self.assertTrue(np.all(np.isnan(inputs['context'][0, 0, 384:416])))
 
     def test_no_heavy_imports(self):
         tree = ast.parse((qf.ROOT/'scripts/quant_fixtures.py').read_text())

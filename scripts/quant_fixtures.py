@@ -10,6 +10,9 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 VERSION = 'c2-truth-v1'
+# Accepted source at 65933ae; update only through explicit source/fixture review.
+# No runtime override or hash-the-current-file acceptance path.
+GENERATOR_SHA256 = '596a45ed8dd14faae0b04718d79308c5fc37af41fb2599256fdf5bd0c185425f'
 REFERENCE_SHA = 'a534bdbd244d64f3d9d743f46c7bf6fc330ed4ff'
 HF_REVISION = '9874d252ab0aae16f7f7c999f98f98d6ad7d8365'
 OPTIONS = dict(symmetric_averaging=True, clip_nonnegative=True, max_context=32768,
@@ -30,6 +33,8 @@ def input_generator():
     AST isolation executes no module top-level code and records the source hash.
     """
     source = (ROOT / 'scripts/gen_reference_baseline.py').read_text()
+    if digest(source.encode()) != GENERATOR_SHA256:
+        raise ValueError('unreviewed reference generator source')
     nodes = [n for n in ast.parse(source).body
              if isinstance(n, ast.FunctionDef) and n.name == 'make_inputs']
     if len(nodes) != 1 or nodes[0].decorator_list:

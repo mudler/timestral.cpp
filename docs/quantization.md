@@ -13,12 +13,21 @@ The caller supplies frozen native anchors; this module cannot extract or recompu
 
 `scripts/quant_fixtures.py` loads the 79 case mappings and constructs independent future truth.
 It isolates the unchanged `make_inputs` function through Python AST compilation instead of importing the reference module.
+Before AST parsing or execution, the helper checks the complete generator source against the accepted SHA-256 pin.
 Only that function executes, with NumPy and math bindings; torch imports and module-level determinism changes do not execute.
+The accepted source at `65933ae` has SHA-256 `596a45ed8dd14faae0b04718d79308c5fc37af41fb2599256fdf5bd0c185425f`.
+Any source change fails closed, including changes outside the function.
+Pin updates require explicit review of the source diff, input-identity checks, and fixture semantics before a code commit.
+Do not derive acceptance pins from current files at runtime or provide a runtime override.
 Fixture provenance records Python/NumPy versions, source/specification hashes, case hash, options, and input/truth hashes.
 These helpers produce in-memory arrays only; they do not write golden artifacts or load models.
 Model-weight hashes remain the responsibility of the future evaluation runner.
 
-Focused tests use small synthetic shapes and all 79 mappings, including missingness and covariate paths.
+Focused tests cover small synthetic shapes and full-shape input identity for all 79 mappings, including missingness and covariate paths.
+The full-shape checks include canonical `nans` patch 12 and verify input bytes, shapes, dtypes, options, and provenance hashes.
+All metric operands validate before undefined propagation; unknown score statuses and NaN/negative loss operands fail in either order.
+Signed relative-change outputs remain valid JSON report values.
+Empty coverage fails; the future runner must require exactly the 79 frozen identities, not an arbitrary nonempty subset.
 They compare input bytes with a separately extracted original generator body and check future independence.
 They also check known-bad metrics, zero denominators, aggregation statuses, and error-match coverage HOLD.
 These tests are preparation, not M7 numerical acceptance.

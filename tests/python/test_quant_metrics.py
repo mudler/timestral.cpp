@@ -49,9 +49,9 @@ class Metrics(unittest.TestCase):
         self.assertEqual(s['aggregate']['value'], 3)
         self.assertEqual(s['item_count'], 2)
         self.assertEqual(s['row_count'], 3)
-        s = qm.summarize({'a': [qm.Score(math.inf)], 'b': [qm.Score(None, 'missing')]})
+        s = qm.summarize({'a': [qm.Score(math.inf)], 'b': [qm.Score(None, 'no-observed-adjacent-pairs')]})
         self.assertEqual(s['aggregate']['kind'], 'undefined')
-        self.assertEqual(s['row_status_counts']['missing'], 1)
+        self.assertEqual(s['row_status_counts']['no-observed-adjacent-pairs'], 1)
         self.assertEqual(qm.average([qm.Score(math.inf), qm.Score(1)]).value, math.inf)
         json.dumps(s, allow_nan=False)
         json.dumps(qm.Score(math.inf).json(), allow_nan=False)
@@ -62,10 +62,44 @@ class Metrics(unittest.TestCase):
         a = qm.relative_change(qm.Score(10), qm.Score(9))
         self.assertEqual(a['signed'].value, -10)
         self.assertEqual(a['absolute'].value, 10)
+        self.assertEqual(a['signed'].json()['value'], -10)
+        json.dumps(a['signed'].json(), allow_nan=False)
         self.assertEqual(qm.relative_change(qm.Score(0), qm.Score(0))['signed'].value, 0)
         self.assertEqual(qm.relative_change(qm.Score(0), qm.Score(1))['signed'].value, math.inf)
         self.assertIsNone(qm.relative_change(qm.Score(math.inf), qm.Score(math.inf))['signed'].value)
         self.assertIsNone(qm.relative_change(qm.Score(None), qm.Score(1))['signed'].value)
+
+    def test_invalid_operands_not_masked(self):
+        for invalid in [math.nan, -1., -math.inf]:
+            for pair in [(qm.Score(None), qm.Score(invalid)),
+                         (qm.Score(invalid), qm.Score(None))]:
+                with self.subTest(invalid=invalid, pair=pair):
+                    for operation in [lambda: qm.average(list(pair)),
+                                      lambda: qm.relative_change(*pair)]:
+                        with self.subTest(operation=operation):
+                            with self.assertRaises(ValueError):
+                                operation()
+
+    def test_unknown_status_and_empty_coverage(self):
+        with self.assertRaises(ValueError):
+            qm.Score(1, 'invented-status').json()
+        with self.assertRaises(ValueError):
+            qm.average([qm.Score(None), qm.Score(1, 'invented-status')])
+        with self.assertRaises(ValueError):
+            qm.coverage([], {})
+
+    def test_handcomputed_multiquantile_and_nonuniform_error(self):
+        # Pinball terms: (.25, 1, .25), (.75, 0, .75); sum=3, D=6.
+        self.assertAlmostEqual(qm.wql([2, 4], [[1, 4, 3], [1, 4, 7]],
+                                      [.25, .5, .75]).value, 1/3)
+        f = np.array([[1., 2.], [3., 4.]])
+        delta = np.array([[0., .1], [.4, .9]])
+        errors = [d/(math.sqrt(1+x*x)*math.sqrt(sum(math.asinh(y)**2
+                  for y in [1, 2, 3, 4])/4)) for x, d in zip(f.flat, delta.flat)]
+        out = qm.normalized(f, f+delta, 0, 1)
+        self.assertAlmostEqual(out['mean'].value, sum(errors)/4)
+        self.assertAlmostEqual(out['maximum'].value, max(errors))
+        self.assertNotEqual(out['mean'].value, out['maximum'].value)
 
     def test_coverage_and_order(self):
         c = qm.coverage(['a', 'b'], {'a': 'forecast', 'b': 'expected-error-match'})
