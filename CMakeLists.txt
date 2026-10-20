@@ -72,7 +72,7 @@ target_include_directories(timestral PUBLIC include $<BUILD_INTERFACE:${CMAKE_CU
 target_compile_definitions(timestral PRIVATE TIMESTRAL_VERSION="${TIMESTRAL_VERSION}")
 target_link_libraries(timestral PUBLIC ggml)
 
-if(TIMESTRAL_BUILD_CLI AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/examples/cli/CMakeLists.txt")
+if(TIMESTRAL_BUILD_CLI)
   add_subdirectory(examples/cli)
 endif()
 if(TIMESTRAL_BUILD_TESTS)
