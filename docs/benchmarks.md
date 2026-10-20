@@ -1,5 +1,35 @@
 # CPU benchmarks (M6c)
 
+## Current result: latency fails, memory passes
+
+The optimized runtime at `b03d674953008e7c557f4148892656eba171e700`
+passes full real M6b numerical parity, but fails the full M6c latency gate.
+The initial measurements below remain historical evidence, not current status.
+See [full-shape validation and profile](m6c-linear.md#full-shape-validation-and-profile)
+for the accepted numerical replay, profile method, and next proposed experiment.
+
+| Implementation | Context / horizon | Threads | Warmup / repeats | Median seconds | Peak RSS bytes |
+|---|---:|---:|---:|---:|---:|
+| Reference 209M | 32768 / 1024 | 1 | 1 / 5 | 14.379144 | 1919361024 |
+| Optimized native 209M | 32768 / 1024 | 1 | 1 / 5 | 330.000421947 | 951521280 |
+| Reference 209M | 32768 / 1024 | 6 | 1 / 5 | 4.443924 | 1919823872 |
+| Optimized native 209M | 32768 / 1024 | 6 | 1 / 5 | 79.884071984 | 951058432 |
+
+Native/reference latency ratios are **22.95x** and **17.98x**.
+The corresponding 1.5x limits are 21.568716 and 6.665886 seconds: both fail.
+Both native RSS measurements pass reference RSS plus 1 GB.
+These processes use matching inputs, one warmup, and five samples, under the
+measurement contract below. Native raw samples reside in
+`timestral-native/m6c-opt/native-32k-{1,6}.json` under the work directory.
+The reference samples remain in `timestral-native/m6c/reference-isolated-{1,6}.json`.
+Input sums match at `-8.5625`. Native output sum is `125.490760441`;
+the reference sum is `125.490904057544`. Sums do not replace parity gates.
+
+A rebuilt optimized Release profile now identifies `sdpa_f32` as the dominant
+full-shape kernel: 62.24% sampled self time, versus 32.07% in `linear_columns`.
+This supersedes the short-shape bottleneck assumption for 32k work.
+No further runtime change accompanies this profile or documentation update.
+
 ## Measurement contract
 
 Build in Release mode, with the CPU backend only:
@@ -54,7 +84,7 @@ acceptance measurement. Use a process timeout and the deployment's memory limit
 when estimating expensive native runs. Initial runs used a 12 GiB address-space
 limit for both implementations.
 
-## Initial measurements
+## Initial measurements (historical, before optimization)
 
 CPU: AMD Ryzen 5 7430U with Radeon Graphics, six physical cores and twelve
 logical CPUs. Reference: PyTorch `2.14.1+cpu`, pinned source/model revisions
@@ -83,7 +113,7 @@ native/reference output sums are `99.59357074` / `99.593632422388`.
 Tiny inputs also match (`-0.515625`). The preserved M6b evidence remains the
 numerical acceptance record; these sums do not replace it.
 
-### Gate status: incomplete, likely latency failure
+### Initial gate status: incomplete, likely latency failure
 
 The M6c gate requires native 32768/1024 medians at most 1.5 times the reference
 and native RSS at most reference RSS plus 1 GB, at **both** thread counts.
@@ -98,7 +128,7 @@ minutes per full native forecast and hours for both repeat-five configurations.
 That is a planning estimate, not a measured full-shape latency. Full native
 runs are deferred pending review of an optimization milestone.
 
-## Bounded profiling and proposed next milestone
+## Initial bounded profiling and proposed next milestone
 
 Hardware profiling was unavailable (`perf_event_paranoid=4`). A separate
 Release build with `-pg` for C, C++ and executable linking ran one cold native

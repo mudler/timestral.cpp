@@ -114,9 +114,106 @@ TIMESTRAL_TEST_GGUF="$MODEL" "$BUILD/tests/test_forecast_determinism" --real-512
 | `baseline-binary.sha256`, `baseline-binary-after.log` | Retained baseline binary checks |
 | `candidate-binaries.sha256`, `source-commit.txt` | Candidate executable hashes and source pin |
 
-## Decision and remaining gates
+## Initial decision and remaining gates (historical)
 
 Keep this bounded candidate for review: exact focused parity and end-to-end
 latency both improve without changing the numerical contract.
 Root review and authorization precede full real M6b replay and 32k repeat-five
 measurements at one and six threads. Full milestone acceptance remains pending.
+
+
+## Full-shape validation and profile
+
+The follow-up uses implementation revision
+`b03d674953008e7c557f4148892656eba171e700` without runtime changes.
+It supersedes the initial pending-gate status above.
+[Current M6c results](benchmarks.md#current-result-latency-fails-memory-passes)
+record the full 32k latency failure and memory pass at both thread counts.
+The short-shape improvement remains real, but does not satisfy full acceptance.
+
+### Full real numerical replay
+
+The pinned optimized executable passes all 15 real cases with selection `all`:
+36 teacher blocks, 36 free blocks, 15 finals, and 159 comparisons.
+There are zero failed cases; the worst normalized tolerance ratio is `0.785359`.
+The replay exits zero after 31:47.62, with peak RSS 3462648 KiB.
+Source and executable hashes pass before/after checks, as recorded by root.
+No tolerance, floor, reference, or baseline changes accompany these results.
+
+Evidence under `timestral-native/m6c-opt`:
+`full-real.log`, `full-real.stdout`, `full-source-commit.txt`,
+`full-source.tar`, `full-source.sha256`, and `full-binary.sha256`.
+The independent 32k benchmark uses `timestral-cli-pinned` and
+`bench-binary.sha256`; its raw measurements are `native-32k-1.json` and
+`native-32k-6.json`, with progress in the matching `.log` files.
+
+### Rebuilt full-shape profile
+
+The previous profiling build contained the old scalar runtime.
+This follow-up reconfigures and rebuilds it from the optimized revision with
+Release, `-pg` for C/C++ and executable linking, and `-j2`.
+`layers.cpp` retains `-ffp-contract=off`. No fast-math flag is added.
+The isolated process uses one thread, context 32768, horizon 1024, zero warmups,
+and one forecast under a 12 GiB address-space limit and 1800-second timeout.
+
+The forecast completes in 342.893459 seconds and exits zero.
+Peak RSS is 943837184 bytes; the output sum remains `125.490760441`.
+This cold instrumented run is diagnostic, not another acceptance timing.
+`gprof` reports 265.15 sampled seconds:
+
+| Symbol | Sampled self seconds | Share |
+|---|---:|---:|
+| `ts::sdpa_f32` | 165.02 | 62.24% |
+| `ts::linear_columns` | 85.04 | 32.07% |
+| `_init` (unattributed) | 11.89 | 4.48% |
+| `ts::detail::linear_f32` | 1.34 | 0.51% |
+
+Attention is now the dominant measured kernel at the acceptance shape.
+Linear contraction remains material. Sampling and profiling overhead prevent
+using these shares as exact wall-time attribution or speedup predictions.
+The profile does not measure the six-thread breakdown.
+Removing attention cost alone cannot plausibly close the measured 22.95x
+single-thread gap to the 1.5x gate: substantial linear work remains.
+After an attention experiment, reprofile before considering independent linear
+cache blocking or weight packing that preserves each output's arithmetic order.
+
+Profile evidence resides under `timestral-native/m6c-opt/profile-32k`:
+`configure.log`, `build.log`, `source-commit.txt`, `source-after.txt`,
+`binary.sha256`, `binary-after.log`, `native-32k.json`, `native-32k.log`,
+`gmon.out`, and `native-32k.gprof`.
+The source pins match before and after execution; the executable hash passes.
+The measured `linear_columns` symbol confirms the optimized path is present.
+
+```sh
+cmake -S . -B "$PROFILE_BUILD" -DCMAKE_BUILD_TYPE=Release \
+  -DTIMESTRAL_BUILD_TESTS=OFF -DCMAKE_CXX_FLAGS=-pg \
+  -DCMAKE_C_FLAGS=-pg -DCMAKE_EXE_LINKER_FLAGS=-pg
+cmake --build "$PROFILE_BUILD" --target timestral-cli -j2
+# Run from an isolated scratch directory to collect gmon.out.
+"$PROFILE_BUILD/examples/cli/timestral-cli" bench --model "$MODEL" \
+  --context-len 32768 --horizon 1024 --threads 1 --warmup 0 --repeat 1
+gprof "$PROFILE_BUILD/examples/cli/timestral-cli" gmon.out > native-32k.gprof
+```
+
+### Proposed next experiment, pending root approval
+
+Target `sdpa_f32` value contraction first. Vectorize across independent output
+head dimensions with AVX2/FMA; retain the existing scalar implementation as oracle.
+Values are contiguous across head dimensions, so this avoids the linear kernel's
+strided weight loads. Each SIMD lane must retain ascending key traversal and
+its original sequential FMA chain, followed by the same reciprocal multiplication.
+Keep the narrow-head separate multiply/add path and all tails unchanged.
+Do not change QK contraction, softmax, masking, or normalization boundaries in
+this first experiment. Do not substitute library attention or reduce across lanes.
+
+This isolates one part of the dominant callback; the current profile does not
+separate QK, softmax, and value contraction costs. Add bounded phase timing if
+this candidate fails to move end-to-end latency. A later independent experiment
+could vectorize QK across key columns while preserving each dot's dimension order.
+
+Before accepting any attention candidate, require byte-exact old/new kernel
+comparisons over small/wide heads, split masks, odd sequences, tails, and random
+and adversarial finite inputs. Then rerun components, full tiny parity, actual
+one-/six-thread forecast determinism, and warm isolated end-to-end measurements.
+Full real M6b and full M6c follow only after bounded evidence and root review.
+No attention implementation change is authorized or included in this report.
