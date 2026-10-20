@@ -53,6 +53,9 @@ The B.4 allowlist and its explicit F32 exclusions still apply.
 
 `eval_quant.py --manifest FILE --report FILE` reads records only; it never launches a model or public forecast command.
 Exit codes are 0 for recorded numerical checks passing, 1 for FAIL/HOLD, and 2 for invalid input or arguments.
+Container and record validation precedes lookups, including preliminary overwrite checks.
+Malformed JSON structures exit with a diagnostic and no report, not a traceback.
+The command rejects manifest/NPZ overwrite aliases, including symlink aliases; recorded NPZ symlinks are invalid.
 A passing report is not independent proof of model execution or milestone acceptance.
 The future native driver remains responsible for truthful model/source identities and exact anchor extraction.
 

@@ -1,5 +1,7 @@
 """Recorded-transport mocks only: no models, canonical-size arrays, or golden files."""
 import copy
+import contextlib
+import io
 import json
 from pathlib import Path
 import sys
@@ -129,6 +131,49 @@ class Recorded(unittest.TestCase):
         self.assertEqual(out['result'], 'FAIL')
         self.assertFalse(out['gates']['bounds']['f16'])
         self.assertFalse(out['gates']['strict_monotonic_mean'])
+
+    def command(self, manifest_path, report_path):
+        with contextlib.redirect_stderr(io.StringIO()) as stderr:
+            with self.assertRaises(SystemExit) as result:
+                eq.main(['--manifest', str(manifest_path), '--report', str(report_path)])
+        self.assertEqual(result.exception.code, 2)
+        self.assertTrue(stderr.getvalue().startswith('error: '))
+        self.assertNotIn('Traceback', stderr.getvalue())
+
+    def test_malformed_container_command_exit(self):
+        bad = [[], None, 7, {'items': None}, {'items': [7]}, {'items': [None]}]
+        for items in [None, {}, [7]*79, [None]*79, ['bad']*79]:
+            m = copy.deepcopy(self.base)
+            m['items'] = items
+            bad.append(m)
+        for value in bad:
+            with self.subTest(value_type=type(value).__name__):
+                path = self.root/'malformed.json'
+                report = self.root/'never-created.json'
+                path.write_text(json.dumps(value))
+                self.command(path, report)
+                self.assertFalse(report.exists())
+
+    def test_symlink_and_overwrite_protection(self):
+        m = copy.deepcopy(self.base)
+        path = self.root/'protected-manifest.json'
+        path.write_text(json.dumps(m))
+        original = path.read_bytes()
+        self.command(path, path)
+        self.assertEqual(path.read_bytes(), original)
+        arrays = self.root/'mock.npz'
+        original_arrays = arrays.read_bytes()
+        self.command(path, arrays)
+        self.assertEqual(arrays.read_bytes(), original_arrays)
+        alias = self.root/'report-alias.npz'
+        alias.symlink_to(arrays.name)
+        self.command(path, alias)
+        self.assertEqual(arrays.read_bytes(), original_arrays)
+        self.assertTrue(alias.is_symlink())
+        m['items'][0]['npz'] = alias.name
+        with self.assertRaises(ValueError):
+            self.evaluate(m)
+        self.assertEqual(arrays.read_bytes(), original_arrays)
 
     def test_duplicate_json_and_command_errors(self):
         path = self.root/'duplicate.json'

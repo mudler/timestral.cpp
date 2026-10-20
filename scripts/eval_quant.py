@@ -52,6 +52,16 @@ def _record(record):
                 and isinstance(record['message'], str), 'invalid error detail')
 
 
+def item_records(manifest):
+    """Validate containers before any record lookup, including overwrite checks."""
+    require(isinstance(manifest, dict), 'manifest must be an object')
+    require('items' in manifest and isinstance(manifest['items'], list),
+            'items must be an array')
+    require(all(isinstance(record, dict) for record in manifest['items']),
+            'item records must be objects')
+    return manifest['items']
+
+
 def evaluate(manifest_path):
     path = Path(manifest_path)
     manifest = read_json(path)
@@ -71,9 +81,10 @@ def evaluate(manifest_path):
                 model['reference_sha'] == fixtures.REFERENCE_SHA, 'wrong source model')
     cases = fixtures.load_cases()
     expected = {c['name']: c for c in cases}
-    records = manifest['items']
-    require(isinstance(records, list) and len(records) == 79, 'exactly 79 items required')
-    ids = [r.get('id') for r in records]
+    records = item_records(manifest)
+    require(len(records) == 79, 'exactly 79 items required')
+    require(all(isinstance(r.get('id'), str) for r in records), 'item IDs must be strings')
+    ids = [r['id'] for r in records]
     require(len(set(ids)) == 79 and set(ids) == set(expected), 'case identities differ')
     rows = {fmt: {} for fmt in FORMATS}
     coverage = {fmt: {} for fmt in FORMATS}
@@ -221,8 +232,8 @@ def main(argv=None):
         report_path = Path(args.report).resolve()
         require(manifest_path.resolve() != report_path, 'report overwrites manifest')
         raw = read_json(manifest_path)
-        for record in raw.get('items', []):
-            if isinstance(record, dict) and isinstance(record.get('npz'), str):
+        for record in item_records(raw):
+            if isinstance(record.get('npz'), str):
                 require((manifest_path.parent / record['npz']).resolve() != report_path,
                         'report overwrites recorded arrays')
         report = evaluate(args.manifest)
