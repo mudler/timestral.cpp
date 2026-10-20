@@ -213,6 +213,23 @@ __attribute__((target("avx2,fma")))
 static int64_t attention_values(const float* p,const float* v,float* out,
                                 int64_t keys,int64_t stride,int64_t hd,float reciprocal) {
     int64_t d=0;
+    for(;d+32<=hd;d+=32) {
+        __m256 a=_mm256_setzero_ps(),b=_mm256_setzero_ps();
+        __m256 c=_mm256_setzero_ps(),e=_mm256_setzero_ps();
+        for(int64_t j=0;j<keys;++j) {
+            __m256 probability=_mm256_set1_ps(p[j]);
+            const float* value=v+j*stride+d;
+            a=_mm256_fmadd_ps(probability,_mm256_loadu_ps(value),a);
+            b=_mm256_fmadd_ps(probability,_mm256_loadu_ps(value+8),b);
+            c=_mm256_fmadd_ps(probability,_mm256_loadu_ps(value+16),c);
+            e=_mm256_fmadd_ps(probability,_mm256_loadu_ps(value+24),e);
+        }
+        __m256 scale=_mm256_set1_ps(reciprocal);
+        _mm256_storeu_ps(out+d,_mm256_mul_ps(a,scale));
+        _mm256_storeu_ps(out+d+8,_mm256_mul_ps(b,scale));
+        _mm256_storeu_ps(out+d+16,_mm256_mul_ps(c,scale));
+        _mm256_storeu_ps(out+d+24,_mm256_mul_ps(e,scale));
+    }
     for(;d+8<=hd;d+=8) {
         __m256 sum=_mm256_setzero_ps();
         for(int64_t j=0;j<keys;++j)

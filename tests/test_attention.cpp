@@ -52,7 +52,7 @@ static void sdpa_f32(ggml_tensor* dst,int ith,int nth,void* split_data) {
 }
 int main() {
     std::mt19937 rng(821);size_t cases=0,values=0;
-    for(int hd:{1,7,8,15,16,17,23,32,63,64,65})
+    for(int hd:{1,7,8,15,16,17,23,31,32,33,63,64,65})
     for(int seq:{1,3,7,8,9,15,16,17,23,24,25,31,32,33,65})
     for(int split:{0,1,seq/2,std::max(0,seq-3),std::max(0,seq-4),seq})
     for(int pattern=0;pattern<4;++pattern) {
