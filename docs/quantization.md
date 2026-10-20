@@ -4,6 +4,26 @@ This document defines the approved M7 evaluation contracts, not an implemented e
 The 64-series composition has conditional approval; its explicit mappings, options, and anchor extraction design await final review.
 No measurements or model artifacts accompany this document.
 
+## Preparatory Python implementation
+
+`scripts/quant_metrics.py` implements model-free row metrics, equal-row/equal-item summaries, relative changes, coverage HOLD, and strict-order checks.
+Scores encode infinities and undefined values as JSON-safe tagged objects with `value=null`, a `kind`, and a `status`.
+Summaries preserve item identities, row counts, and row-status counts without finite-only filtering.
+The caller supplies frozen native anchors; this module cannot extract or recompute them.
+
+`scripts/quant_fixtures.py` loads the 79 case mappings and constructs independent future truth.
+It isolates the unchanged `make_inputs` function through Python AST compilation instead of importing the reference module.
+Only that function executes, with NumPy and math bindings; torch imports and module-level determinism changes do not execute.
+Fixture provenance records Python/NumPy versions, source/specification hashes, case hash, options, and input/truth hashes.
+These helpers produce in-memory arrays only; they do not write golden artifacts or load models.
+Model-weight hashes remain the responsibility of the future evaluation runner.
+
+Focused tests use small synthetic shapes and all 79 mappings, including missingness and covariate paths.
+They compare input bytes with a separately extracted original generator body and check future independence.
+They also check known-bad metrics, zero denominators, aggregation statuses, and error-match coverage HOLD.
+These tests are preparation, not M7 numerical acceptance.
+The model runner, CLI transport, native anchor extraction, separate suite orchestration, and acceptance report remain unimplemented.
+
 ## Scope and invariants
 
 Compare reduced-precision forecasts with F32 C++ forecasts on identical inputs.
