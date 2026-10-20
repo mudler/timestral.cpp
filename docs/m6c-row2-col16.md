@@ -95,3 +95,31 @@ Evidence under `timestral-m6c-row2-col16/fullshape-attempt2`: `run.py`,
 `admission-30.log`, and `HOLD.json`. Both attempts remain intact. Job2978 is
 finished, no model child is running, and the heavy slot is released. No automatic
 retry or production adoption follows; performance remains **UNDECIDED**.
+
+## Separately authorized contended full-shape correctness pair
+
+Root separates correctness progress from unavailable performance admission.
+Using the exact frozen binaries with no edits/rebuild, one baseline and one
+candidate N1 forecast run at32768/1024 dyadic-v1 under hard12GiB, serially.
+No quiet screen, benchmark sampling, latency interpretation, affinity/topology
+change, or unrelated process intervention is performed.
+
+Both outputs contain **21504 finite F32 values /86016 bytes**, shape
+`[1,1,1024,21]`, and match **byte-for-byte**. Shared output SHA256:
+`ec17a1758dbefd78b2bae825464b02e8e78aeb9cf0fdd6a2862d3c54c8f2d4c6`.
+This completes the pending full-shape numerical-identity control for this
+single input, not a complete trained corpus or performance acceptance.
+
+All **363 source/archive/reference/SDK/model/executable entries** match before/
+after. Host snapshots confirm substantial contention (before load43.91,
+pressureavg10 59.81%; after load41.67,pressure63.96%). Harness diagnostic clocks
+remain in raw stderr but are not interpreted or promoted as timing results.
+The candidate is still isolated: **performance UNDECIDED, no adoption**.
+No six-thread model/performance run or matched warmed diagnostic is authorized
+or launched by this correctness-only grant.
+
+Evidence under `timestral-m6c-row2-col16/fullshape-correctness-only`:
+`before.json`, `after.json`, `baseline.bin`, `candidate.bin`, process stdout/
+stderr logs, `host-before.log`, `host-after.log`, and `result.json`.
+Job2988 exits0 after actual comparison and pin closure. The heavy slot is
+released; no retry or next scope starts automatically.
