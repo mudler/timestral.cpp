@@ -149,6 +149,23 @@ static float attention_exp(float x) {
     return (y*std::ldexp(1.f,int(n)-1))*2;
 }
 #ifdef TS_LINEAR_AVX2
+// Each lane owns a key dot and retains ascending head-dimension FMA order.
+__attribute__((target("avx2,fma")))
+static int64_t attention_keys(const float* q,const float* k,float* dots,
+                              int64_t keys,int64_t stride,int64_t hd) {
+    int64_t j=0;
+    for(;j+8<=keys;j+=8) {
+        __m256 dot=_mm256_setzero_ps();
+        for(int64_t d=0;d<hd;++d) {
+            const float* p=k+j*stride+d;
+            __m256 key=_mm256_set_ps(p[7*stride],p[6*stride],p[5*stride],p[4*stride],
+                                    p[3*stride],p[2*stride],p[stride],p[0]);
+            dot=_mm256_fmadd_ps(_mm256_set1_ps(q[d]),key,dot);
+        }
+        _mm256_storeu_ps(dots+j,dot);
+    }
+    return j;
+}
 __attribute__((target("avx2,fma")))
 static int64_t attention_values(const float* p,const float* v,float* out,
                                 int64_t keys,int64_t stride,int64_t hd,float reciprocal) {
@@ -174,7 +191,18 @@ void detail::sdpa_f32(ggml_tensor* dst,int ith,int nth,void* split_data) {
         int64_t h=job%H,t=job/H%S,r=job/(H*S);
         int64_t keys=(split && t<split)?split:S;
         float mx=-INFINITY;
-        for(int64_t j=0;j<keys;++j){float dot=0,acc[8]={};for(int64_t d=0;d<hd;++d){float a=Q[(r*S+t)*D+h*hd+d],b=K[(r*S+j)*D+h*hd+d];dot=std::fma(a,b,dot);acc[d%8]+=a*b;}
+        int64_t first_key=0;
+#ifdef TS_LINEAR_AVX2
+        if(S>=8 && !(split && S-split<4 && t>=split) &&
+           __builtin_cpu_supports("avx2") && __builtin_cpu_supports("fma"))
+            first_key=attention_keys(Q+(r*S+t)*D+h*hd,K+r*S*D+h*hd,logits.data(),keys,D,hd);
+#endif
+        // Consume SIMD dots in the original scalar key order for scale/mask/max.
+        for(int64_t j=0;j<first_key;++j) {
+            logits[j]=logits[j]*float(1/std::sqrt(double(hd)))+M[(r*S+t)*S+j];
+            mx=std::max(mx,logits[j]);
+        }
+        for(int64_t j=first_key;j<keys;++j){float dot=0,acc[8]={};for(int64_t d=0;d<hd;++d){float a=Q[(r*S+t)*D+h*hd+d],b=K[(r*S+j)*D+h*hd+d];dot=std::fma(a,b,dot);acc[d%8]+=a*b;}
             // Small CPU GEMM uses non-fused lane reductions: four lanes
             // for complete key groups, eight for the remaining key columns.
             // These are execution-shape branches, never layer/case IDs.
