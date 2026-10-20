@@ -244,3 +244,68 @@ Evidence under `timestral-native/m6c-keypack/retention-2`:
 `baseline-source.tar`, `candidate-source.tar`, `rescreening.jsonl`,
 `rescreen-*.log`, `baseline-512-1.json`, `baseline-512-1.log`,
 `baseline-512-1-host.json`, matching before/after snapshots, and `interrupted.txt`.
+
+## Actual callback ownership audit: task-policy correction
+
+This section explicitly supersedes earlier inferences that custom nodes declared
+with task count one necessarily run their callbacks serially. Historical timing
+records remain unchanged. At pinned ggml e705c5fe, requested node task counts
+contribute to graph planning, but custom callbacks receive graph-wide ith/nth.
+Other nodes can raise the graph's worker count. Changing only the custom task
+argument therefore is not an established parallelization opportunity.
+
+A scratch-only audit from committed base `0cae4e3` adds local integer counters
+and mutex-protected logging. No production source, floating-point expression,
+job ownership, packing condition, or task-policy changes occur. Exact original
+linear oracle passes **10080 comparisons / 32848416 values**. Attention passes
+**1296 focused comparisons** with expected activation/fallback counters and
+**9360 original comparisons / 22248000 values**. These checks precede model runs.
+
+Four actual single-cold-forecast diagnostics complete: context/horizon 512/32
+and 32768/1024, each with one and six requested threads. Full-shape runs follow
+three eligible load/pressure samples. All runs/builds execute serially under
+the hard 12 GiB guard with -j2 compilation. Instrumentation overhead means none
+of their wall times establishes performance, retention, or M6c acceptance.
+
+| Shape | Requested threads | Actual callback nth | Linear callback invocations | SDPA invocations | Total owned linear rows | Total attention jobs |
+|---|---:|---:|---:|---:|---:|---:|
+| 512/32 | 1 | 1 | 290 | 60 | 4826 | 12240 |
+| 512/32 | 6 | 6 | 1740 | 360 | 4826 | 12240 |
+| 32768/1024 | 1 | 1 | 290 | 60 | 299840 | 760320 |
+| 32768/1024 | 6 | 6 | 1740 | 360 | 299840 | 760320 |
+
+Every node has exactly one invocation per worker, with complete ith sets.
+Counters match the cyclic partition's disjoint/exhaustive row/job sets, so each
+output owner occurs once. This verifies partition arithmetic and observed worker
+coverage, not a sanitizer-level proof against every possible memory race.
+Full-shape time attention has S=1056,H=12,hd=64. At six workers, worker i owns
+all 1056 queries for heads i and i+6. Keypack therefore retains its >=32 owned
+query eligibility; heads are not split six ways at this geometry.
+
+Both thread counts record **576 packed-head events** and **608256 packed
+queries**. Full-shape packed scratch per time-attention callback is **3244044
+bytes** including 12 head-state bytes. Across all invocations its allocation
+sum is **155714112 bytes at one thread** and **934284672 bytes at six**.
+These are repeated-allocation sums, **not simultaneous peak RSS**. Six concurrent
+time-attention callbacks reserve approximately 18.56 MiB in total while filling
+only their assigned heads. Linear packed scratch allocation sums likewise grow
+from **9437184** to **56623104 bytes**; each worker owns independent scratch.
+At 512 neither linear packing nor key packing activates. Both thread counts
+retain the same output sums; scalar-oracle checks, not sums, establish the
+instrumentation's focused numerical equivalence.
+
+Tested source archive and CLI/oracle binary hashes match before/after all runs.
+The post-audit model hash matches the existing pre-audit canonical-run model
+pin; an immediately-before-audit model hash was not captured, so this is not
+claimed as a fresh adjacent before/after model check. The archived vendor's
+1962 blobs match e705c5fed490514458bdd2eaddc43bd098fcce9b; outer-repository
+archive Git metadata is not the vendor identity.
+
+Evidence under `timestral-native/m6c-ownership-audit`: `base.tar`, `ggml.tar`,
+`instrumentation.patch`, `tested-source.tar`, `before.json`, `after.json`,
+`oracle-linear.log`, `oracle-attention.log`, `512-{1,6}.log/json`,
+`32k-{1,6}.log/json`, parsed summaries, `coverage-verification.json`,
+`model-pin-verification.json`, `vendor-verification.json`, screening and host
+snapshots. Parsed counters are measured execution evidence; allocation totals
+must not be reported as memory peaks. No task-policy optimization is justified
+by the old serial assumption. Root owns the next uninstrumented retention task.
