@@ -99,3 +99,57 @@ Evidence under `timestral-m7-5m/progress-multi-long` relative to the work root:
 resource logs, contract/floor logs (including all warnings), strict M3/M6b logs,
 and disk measurements. No full-profile claim, quantized-quality gate, or licence
 publication decision follows. Root selects the next bounded prerequisite stage.
+
+## Remaining-case stage: STOP at known_cov failure
+
+The separately authorized remaining-ten sequence runs accepted scalar policy
+7831255, not the concurrent SIMD candidate, and stops on the first strict error.
+It generates exactly 15 new artifacts: five modes each for uni_short, past_cov,
+and known_cov. Each contract passes, floors use the unchanged formula, and M3
+passes. No subsequent case, final65 audit, or aggregate13 gate runs.
+
+| Case | M3 selections/layers/comparisons | Worst M3 ratio | M6b completed cases/comparisons | M6b result |
+|---|---|---:|---|---|
+| uni_short | 2 /16 /34 | 0.510238 | 1 /9 | PASS, worst0.481416 |
+| past_cov | 2 /16 /34 | 0.741841 | 1 /9 | PASS, worst0.557982 |
+| known_cov | 2 /16 /34 | 0.500000 | 0 /4 successful comparisons | FAIL at fifth attempted comparison |
+
+Exact first failure: **G6.2 floor_tf predict neg.b0**, known_cov.
+Normalized error **1.34354679e-5**, floor **6.52044475e-6**, unchanged tolerance
+**1.30408895e-5**, ratio **1.03025702**. Four positive-pass comparisons complete;
+one teacher block and one free block are counted, zero finals. The executable's
+summary `max_ratio=0.304715` covers only successful completed comparisons and
+must not hide the actual failing ratio. Deliberately corrupt negative controls
+also print FAIL; they are not the reason for this case failure.
+Known_cov M3 still passes all16 selected local layers with no missing references.
+No inference is made yet about the causal operation behind the negative failure.
+
+Known_cov floor generation reports **2 tensors with 2*floor above cap**;
+all warnings and new artifacts remain intact. Existing fifteen pilot/multi/long_h
+artifacts retain their original hashes. Atomic no-overwrite publication uses
+same-filesystem hard links from per-case staging; no old file is regenerated.
+Current inventory is **30 artifacts /6 cases**, not the required65/13.
+Five cases now have passing strict M3/M6b evidence including earlier stages;
+known_cov remains HOLD. Seven untouched cases are cat_uni,cat_multi,long_h_known,
+nans,nonneg,const,all_missing. No case exclusion or gate reinterpretation occurs.
+
+Generation wall seconds by modes f32/f32-math/f64/f64-rerun/f32-math-rerun:
+- uni_short: **33.41 /12.59 /13.84 /16.31 /11.03**; peak509456 KiB.
+- past_cov: **15.12 /16.27 /17.67 /24.10 /14.04**; peak795532 KiB.
+- known_cov: **19.85 /18.55 /17.77 /23.27 /14.15**; peak796248 KiB.
+All modes exit zero. Strict known_cov M6b exits one as required by the stop rule.
+Hard12GiB and serial OMP/MKL/OpenBLAS1 apply; no native build runs.
+
+After stopping, all **8 model/binary/source/spec/script pins** match the execution
+before-manifest, and all **15 protected existing artifact pins** match separately.
+The new15 sizes/hashes/resources are recorded without modifying their contents.
+Scratch under `timestral-m7-5m/remaining-prepared`: `execution-before.json`,
+`execution-after-stopped.json`, `existing15-pins.json`,
+`existing15-after-stopped.json`, `stopped-resources-artifacts.json`,
+per-case five-mode/contract/floor/M3/M6b logs, staging directories, and
+`completed.txt` containing only uni_short/past_cov PASS.
+
+Prepared aggregate expectations (30 M3 selections/510 comparisons and141 M6b
+comparisons) remain unexecuted expectations, not results. No automatic diagnosis,
+policy change, tolerance/floor/reference rewrite, or retry follows this report.
+The 5M prerequisite remains **HOLD** pending root's next causal-analysis decision.
