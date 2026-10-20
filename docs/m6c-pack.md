@@ -130,3 +130,26 @@ TIMESTRAL_TEST_GGUF="$MODEL" "$BUILD/tests/test_forecast_determinism" --real-512
 | `candidate-binaries.sha256`, `source-commit.txt` | Candidate hashes and source pin |
 | `layers-shapes.cpp`, `shape-build.log`, `shapes-512.log` | Scratch-only activation audit; all rows below 32 |
 | `fresh-baseline-512-1.json`, matching `.log` | Fresh prior-QK one-thread warm control |
+
+### Cooled short-shape control
+
+A final serial control repeats both executables in isolated processes with
+20 seconds before each configuration, one warmup, and five timed samples:
+
+| Threads | Prior QK median | Packing candidate median | Candidate change |
+|---|---:|---:|---:|
+| 1 | 1.809307781 s | 1.846386841 s | 2.05% slower |
+| 6 | 0.643954744 s | 0.622159042 s | 3.38% faster |
+
+These matched controls do not reproduce the initial large short-shape regression.
+Absolute times differ from earlier sessions, so comparisons across sessions
+cannot establish packing overhead. Packing still never activates at 512;
+the 32-row threshold remains unchanged. No threshold adjustment can affect
+this workload. The remaining two-percent single-thread difference is recorded,
+not dismissed as proven noise or a relaxed performance gate.
+
+Keep the candidate for its large measured full-shape improvement, with root
+review of the short-shape trade-off. Do not claim an across-shape speedup.
+Artifacts: `cooled-{baseline,candidate}-512-{1,6}.json` and matching `.log`
+files under the experiment scratch directory. No runtime changes accompany
+this final control or documentation update.
