@@ -1,8 +1,14 @@
 # Conversion
 
 `scripts/convert_timestral_to_gguf.py` turns a Timestral checkpoint into one GGUF file.
-The file holds every setting as a KV and every weight as an F32 tensor, so the C++ loader
-needs no other file. The schema is in `docs/PLAN.md`, sections B.1 to B.3.
+The file holds every setting as a KV, so the C++ loader needs no other file.
+The default `--outtype f32` keeps every tensor F32.
+`--outtype f16` casts only B.4 projection weights after QKV permutation; all exclusions remain byte-identical F32.
+The F16 output records `timestral.conversion.outtype`, `timestral.conversion.type_policy`, and the converter source SHA-256.
+Licence and original source provenance remain intact.
+Q8, K-quants, and BF16 remain unsupported in this preparatory slice.
+The schema is in `docs/PLAN.md`, sections B.1 to B.4.
+The existing byte-parity checker applies only to F32 outputs; reduced-format tests do not replace that gate.
 
 ## Reference environment
 

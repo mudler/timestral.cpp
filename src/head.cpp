@@ -1,4 +1,5 @@
 #include "head.hpp"
+#include "weight_policy.hpp"
 #include <cmath>
 #include <algorithm>
 #include <limits>
@@ -30,11 +31,18 @@ void head_linear_f32(ggml_tensor* dst,int ith,int nth,void*) {
  for(size_t i=ith;i<size_t(ggml_nelements(dst));i+=nth){float sum=0;for(size_t j=0;j<K;++j)sum=std::fma(w[(i%N)*K+j],x[(i/N)*K+j],sum);y[i]=b?sum+b[i%N]:sum;}
 }
 ggml_tensor* head_linear(ggml_context* ctx,const Model& m,const char* name,ggml_tensor* x,bool bias=false){
+ auto reduced=m.tensor(std::string(name)+".weight");
+ if(reduced->type!=GGML_TYPE_F32)return reduced_projection(ctx,reduced,x,bias?m.tensor(std::string(name)+".bias"):nullptr);
  // Small reference SGEMM dots accumulate sequential F32 FMA, not double.
  if(x->ne[0]>=192)return affine(ctx,m,name,x,bias);
  auto w=m.tensor(std::string(name)+".weight");ggml_tensor* args[]={w,x,bias?m.tensor(std::string(name)+".bias"):nullptr};
  return ggml_custom_4d(ctx,GGML_TYPE_F32,w->ne[1],x->ne[1],x->ne[2],1,args,bias?3:2,head_linear_f32,1,nullptr);
 }
+}
+
+// Internal test seam for the small-input projection dispatch, not public ABI.
+ggml_tensor* detail_head_projection(ggml_context* ctx,const Model& m,const char* name,ggml_tensor* x,bool bias) {
+ return head_linear(ctx,m,name,x,bias);
 }
 
 std::vector<float> monotone_quantiles(const Config& c, const std::vector<float>& raw) {

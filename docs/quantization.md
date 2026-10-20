@@ -35,6 +35,19 @@ The model runner, CLI transport, and native anchor extraction remain unimplement
 `eval_quant.py` now orchestrates recorded-output validation, per-row scoring, separate suite summaries, and numerical checks.
 Its unit tests use explicitly mocked small fixtures, not model outputs or milestone evidence.
 
+## Preparatory F16 implementation slice
+
+The F16 slice adds storage policy and projection dispatch, not real-model acceptance.
+Keep the existing F32 callback branches and their arithmetic unchanged.
+Reduced weights use GGML matmul with F32 graph inputs and outputs, followed by F32 bias addition.
+GGML may internally round activations to F16; M7 quality metrics cover this difference, not strict reference parity.
+Cover `affine`, the residual patch projection, and the small-input head projection before the loader accepts F16.
+Only B.4 weights permit F16; all other tensors remain F32.
+Reject Q8, K-quants, BF16, and every unsupported type until their implementation slices.
+The converter permutes QKV before F16 casting and records output-type provenance without replacing licence/source metadata.
+Use synthetic fixtures and existing F32 regressions for this preparatory slice.
+M6c, the 5M F32 prerequisite, real-model quality evaluation, and milestone acceptance remain separate gates.
+
 ## Scope and invariants
 
 Compare reduced-precision forecasts with F32 C++ forecasts on identical inputs.

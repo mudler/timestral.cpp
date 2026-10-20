@@ -3,10 +3,11 @@
 
 Writes the schema of docs/PLAN.md, sections B.1 to B.3. The GGUF is self-contained: every
 setting is a KV, and the rope tables come from the reference class. Values are never
-changed, except for the exact row permutation of the fused QKV projection (B.3).
+changed at f32, except for the exact row permutation of the fused QKV projection (B.3).
+The f16 output casts only the projection weights in the B.4 allowlist.
 
     convert_timestral_to_gguf.py --model <hub id or dir> [--revision SHA] \
-        --outtype f32 --output OUT.gguf [--license-file FILE]
+        --outtype f32|f16 --output OUT.gguf [--license-file FILE]
 
 Next to OUT.gguf the script also writes OUT.config.json, a copy of the config.json that
 was converted. Only tests read it (gate G0.2); the GGUF does not need it.
@@ -15,6 +16,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import struct
 import sys
@@ -118,6 +120,21 @@ def expected_tensors(c: TimestralConfig):
     return out
 
 
+def reduced_weight_name(name: str) -> bool:
+    return name in {'patch.out.weight', 'head.hidden.weight', 'head.out.weight', 'head.res.weight'} or bool(
+        re.fullmatch(r'blk\.[0-9]+\.(?:attn\.[0-9]+\.(?:qkv|gate|out)|ffn_w12|ffn_w3)\.weight', name))
+
+
+def storage_tensor(name, a, c, outtype):
+    if outtype not in ('f32', 'f16'):
+        raise ValueError('unsupported output type')
+    if name.endswith(('qkv.weight', 'qkv.bias')):
+        a = permute_qkv(a, c)
+    if outtype == 'f16' and reduced_weight_name(name):
+        return np.ascontiguousarray(a, dtype=np.float16), gguf.GGMLQuantizationType.F16
+    return np.ascontiguousarray(a), gguf.GGMLQuantizationType.F32
+
+
 def permute_qkv(a: np.ndarray, c: TimestralConfig) -> np.ndarray:
     """B.3: torch row o = s*D + d*H + h  ->  GGUF row s*D + h*head_dim + d."""
     hd, H = c.head_dim, c.num_heads
@@ -147,7 +164,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--model", required=True, help="Hub id or local directory")
     ap.add_argument("--revision", default=None)
-    ap.add_argument("--outtype", default="f32", choices=["f32"])
+    ap.add_argument("--outtype", default="f32", choices=["f32", "f16"])
     ap.add_argument("--output", required=True)
     ap.add_argument("--license-file", default=None)
     ap.add_argument("--name", default=None)
@@ -195,6 +212,10 @@ def main() -> int:
     S("timestral.source.code_sha", CODE_SHA)
     S("timestral.source.weights_sha256", sha256_of(w_path))
     U("timestral.converter_version", CONVERTER_VERSION)
+    if args.outtype != "f32":
+        S("timestral.conversion.outtype", args.outtype)
+        S("timestral.conversion.type_policy", "b4-f16-v1")
+        S("timestral.conversion.converter_sha256", sha256_of(Path(__file__)))
     U("timestral.patch_size", c.patch_size)
     U("timestral.embedding_length", c.d_model)
     U("timestral.attention.head_count", c.num_heads)
@@ -238,9 +259,8 @@ def main() -> int:
                 raise SystemExit(f"{st_name}: dtype {a.dtype}, expected float32")
             if tuple(a.shape) != shape:
                 raise SystemExit(f"{st_name}: shape {tuple(a.shape)}, expected {shape} from the config")
-            if gg_name.endswith(("qkv.weight", "qkv.bias")):
-                a = permute_qkv(a, c)
-            w.add_tensor(gg_name, np.ascontiguousarray(a), raw_dtype=gguf.GGMLQuantizationType.F32)
+            a, storage_type = storage_tensor(gg_name, a, c, args.outtype)
+            w.add_tensor(gg_name, a, raw_dtype=storage_type)
             n_written += 1
     w.add_tensor("rope.inv_freq", np.ascontiguousarray(inv_freq), raw_dtype=gguf.GGMLQuantizationType.F32)
     w.add_tensor("rope.cos", np.ascontiguousarray(cos), raw_dtype=gguf.GGMLQuantizationType.F32)

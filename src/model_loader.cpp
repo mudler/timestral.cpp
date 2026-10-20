@@ -1,4 +1,5 @@
 #include "model_loader.hpp"
+#include "weight_policy.hpp"
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -275,8 +276,8 @@ Model Model::load(const std::string& path) {
             if (!have.count(s.name)) fail("missing tensor: " + s.name);
             ggml_tensor* t = ggml_get_tensor(m.ctx_, s.name.c_str());
             if (!t) fail("internal: tensor not in ggml context: " + s.name);
-            if (t->type != s.type)
-                fail("tensor " + s.name + " has type " + ggml_type_name(t->type) + ", expected " + ggml_type_name(s.type));
+            if (!weight_type_allowed(s.name, t->type, t->ne[0]))
+                fail("tensor " + s.name + " has type " + ggml_type_name(t->type) + ", forbidden by the storage policy");
             for (int d = 0; d < GGML_MAX_DIMS; ++d)
                 if (t->ne[d] != s.ne[d])
                     fail("tensor " + s.name + " has shape [" + std::to_string(t->ne[0]) + ", " + std::to_string(t->ne[1]) +

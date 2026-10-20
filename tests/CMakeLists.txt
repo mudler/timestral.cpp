@@ -79,6 +79,8 @@ add_test(NAME test_forecast_units COMMAND test_forecast --unit)
 add_test(NAME test_forecast_209m COMMAND test_forecast --real)
 set_tests_properties(test_forecast_209m PROPERTIES LABELS "slow")
 
+ts_add_test(test_f16)
+
 ts_add_test(test_linear)
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
   target_compile_options(test_linear PRIVATE -ffp-contract=off)

@@ -1,4 +1,5 @@
 #include "layers.hpp"
+#include "weight_policy.hpp"
 #include <cmath>
 #include <cstring>
 #include <algorithm>
@@ -116,6 +117,7 @@ ResidualOutput residual_block(ggml_context* ctx, const Model& m, ggml_tensor* x)
     auto linear=[&](const char* w,const char* b,ggml_tensor* input) {
         auto weight=m.tensor(w), bias=m.tensor(b);
         if(weight->ne[0]!=input->ne[0] || bias->ne[0]!=weight->ne[1] || ggml_nelements(bias)!=bias->ne[0]) throw Error("invalid residual weight/bias dimensions");
+        if(weight->type!=GGML_TYPE_F32)return reduced_projection(ctx,weight,input,bias);
         ggml_tensor* args[]={weight,input,bias};
         return ggml_custom_4d(ctx,GGML_TYPE_F32,weight->ne[1],input->ne[1],input->ne[2],1,args,3,detail::linear_f32,1,nullptr);
     };
@@ -139,6 +141,7 @@ namespace ts {
 ggml_tensor* affine(ggml_context* ctx,const Model& m,const std::string& base,ggml_tensor* x,bool bias) {
     auto w=m.tensor(base+".weight"); auto b=bias?m.tensor(base+".bias"):nullptr;
     if(x->type!=GGML_TYPE_F32 || !ggml_is_contiguous(x) || x->ne[3]!=1 || w->ne[0]!=x->ne[0] || (b && ggml_nelements(b)!=w->ne[1]))throw Error("invalid affine layout");
+    if(w->type!=GGML_TYPE_F32)return reduced_projection(ctx,w,x,b);
     ggml_tensor* args[]={w,x,b};
     return ggml_custom_4d(ctx,GGML_TYPE_F32,w->ne[1],x->ne[1],x->ne[2],1,args,b?3:2,detail::linear_f32,1,nullptr);
 }
