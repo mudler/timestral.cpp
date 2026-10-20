@@ -1,5 +1,35 @@
 # Evaluation driver: tsqbin-v1 and tsqbin-v2
 
+## Complete recorded-matrix producer
+
+`scripts/record_quant_matrix.py` is separate from the v1 F32 development producer.
+It requires `--driver`, `--models`, `--build-sidecar`, and a new `--output` directory.
+The models JSON object maps exactly `f32`, `f16`, `q8_0`, `q6_k`, `q5_k`, and `q4_k` to unique regular nonsymlink paths.
+The build sidecar has exactly `version=quant-driver-build-v1`, `protocol_version=2`, `runtime_commit`, `source_sha256`, and `executable_sha256`.
+Commit/source identity remains asserted build provenance; executable and model hashes are measured before and after execution.
+
+The producer reads actual GGUF tensor metadata and compares logical shapes, configuration, licence/source fields, original weights identity, and QKV layout.
+It requires exact requested storage on every B.4 weight, F32 exclusions, frozen options, and compatible rows.
+K provenance must identify the mapped F32 GGUF as its actual input hash.
+It never infers storage from filenames or manufactures six model identities.
+
+For each frozen item, it constructs inputs/truth once, invokes six v2 requests, and captures anchors only in the F32 request.
+That yields 474 invocations and 79 anchor captures for a complete matrix.
+The scorer independently reconstructs fixtures during validation; this is separate from producer construction.
+Each format retains request/result bytes and an identity audit; `build-audit.json` retains model metadata and sidecar provenance.
+Each NPZ uses the scorer's exact array names, one frozen F32 anchor pair, and all six forecasts.
+The producer invokes the actual recorded scorer before publishing `manifest.json` last.
+A numerical FAIL report does not become a quality PASS merely because record production succeeds.
+
+Any failed invocation, identity mismatch, or missing output writes `HOLD.json` and withholds the scoring manifest.
+Native diagnostic equality never becomes an expected-reference-error assertion or a fabricated zero forecast.
+All outputs use exclusive temporary files and no-overwrite publication inherited from the development publisher.
+Successful partial item artifacts may remain for audit after HOLD; no success manifest labels them complete.
+
+Model-free tests use a complete 79-item small-shape fixture mock and six distinct mock model files.
+They verify all 474 requests, F32-only capture, actual scorer ingestion, lineage/storage negatives, response association, and missing-output HOLD.
+No native matrix execution, trained-weight conversion, or quality acceptance occurs in these tests.
+
 ## Preparatory six-format extension
 
 V1 encoding and F32 behavior remain unchanged.
