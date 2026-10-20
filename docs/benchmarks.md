@@ -186,3 +186,73 @@ Evidence under `timestral-m6c-qualified-on-formal` relative to the work root:
 `effective-build-flags.json`, `loader-before.json`, `HOLD.json`, and
 `pin-inventory-diagnosis.json`. Heavy job exits1 at preflight; no child forecast
 remains running. M6c remains unmeasured for this qualified production profile.
+
+## Qualified standalone-ON 68a5a53: measured latency failure
+
+After trained replay acceptance, root explicitly authorizes a second formal
+attempt using the same unprofiled Release ON/shared binary and original model.
+The setup-only first HOLD is preserved. Attempt2 reconciles only the seven
+missing per-file entries against exact members of reviewed source archive
+SHA256 `082ef042a9e44304f0d3c75870437bdd803050c1e4fd765018b24b4358db2b38`
+and committed68a5a53. It does not rebaseline arbitrary files.
+
+Both configurations complete in separate processes with one discarded warmup,
+five timed 32768/1024 univariate dyadic-v1 forecasts, 60-second cooldown plus
+quiet admission, hard12GiB, and no build/instrumentation overlap. MKL is the
+qualified sequential profile, one vendor thread; ggml requests one/six threads.
+LD_PRELOAD is unset. Actual process maps confirm the reviewed timestral library
+and qualified LP64/sequential/core/ISA SDK DSOs, with no Torch or threaded-MKL
+library. Backend JSON is `standalone-mkl-lp64-sequential-2024.0.2-20240605`.
+
+| Threads | Native median seconds | Reference median seconds | Native/reference | Allowed seconds | Native RSS bytes | Allowed RSS bytes |
+|---|---:|---:|---:|---:|---:|---:|
+| 1 | 36.392652770 | 14.379144 | 2.531x | 21.568715892 | 977420288 | 2919361024 |
+| 6 | 18.281547354 | 4.443924 | 4.114x | 6.665886145 | 972148736 | 2919823872 |
+
+**Both latency checks fail; both RSS checks pass.** Exit0 means measurements
+complete, not performance acceptance. Root retains final resource qualification.
+No fast-math, numerical-tolerance, reference, or performance-gate change occurs.
+
+All timed samples in order, seconds:
+- One thread: **36.236992258,36.527033130,36.337611389,36.392652770,36.803461885**.
+- Six threads: **18.746205724,17.988207285,17.755263101,18.916108938,18.281547354**.
+
+Every metadata field, five-sample count/recomputed median, finite output checksum,
+inputsum-8.5625, CPU model, and reference contract is checked. Output sums remain
+diagnostic rather than parity gates. All **2219 immutable source/vendor/SDK/model/
+archive/binary/reference entries** match at initial, per-configuration before/
+after, and final checks. No samples are excluded or automatic retry performed.
+
+### Resource interpretation
+
+One-thread process records217.21user+0.37system/218.50wall seconds (0.996CPU).
+Across103 monitoring snapshots, load1 is5.23–10.22 and pressureavg10 is4.37–7.56%.
+Sampled thread schedstat deltas record216.62s CPU and0.90s runqueue wait.
+This supports available single-core execution, not an externally starved run.
+
+Six-thread process records315.28user+0.63system/110.60wall seconds (2.856CPU).
+Across52 snapshots, load1 is6.80–15.34 and pressureavg10 is4.39–18.36%.
+Six actual threads appear, with up to six runnable. Sampled scheduler deltas
+sum315.22s CPU and30.62s runqueue wait across workers; these per-thread sums
+are not directly additive wall time. Main threadCPU105.37s versus approximately
+42s per other worker is consistent with serial regions/sequential vendor work,
+but does not isolate the exact limiting kernel. No universal600% utilization
+requirement or global-pressure-only invalidation is applied.
+
+Both visible cgroup throttling deltas are zero. Other resident agent/service
+processes consume CPU, but monitoring does not establish a competing heavy
+Timestral run or justify removing samples. Available all-core frequency snapshots
+span1111–3518MHz (one-thread configuration) and2550–3418MHz (six-thread);
+these are not per-thread residency or thermal-causality measurements.
+Recovery load/pressure declines after each process; six-thread final recovery
+sample is9.32/5.62%. Evidence supports reporting the measured failure with
+resource caveats, not asserting that contention alone explains the gap.
+
+Evidence under `timestral-m6c-qualified-on-formal-attempt2`: numeric-summary.json,
+analysis-{1,6}.json, native-{1,6}.json/.time/.stderr, monitor/recovery JSONL,
+admission records, loader/maps records, archive-reconciliation.json,
+effective-build-flags.json, pins-before/per-configuration/final JSON.
+The wrapper and exact setup remain under `timestral-real-quant-readiness/current-68a5a53/qualified-on-m6c`.
+Root owns acceptance and any next profiling/optimization grant. No quantization
+run or further formal replay follows automatically. Current M6c latency remains
+unmet despite the passing trained numerical profile.
