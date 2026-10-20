@@ -935,3 +935,10 @@ revision, with source/archive/binary SHA-256 recorded before and after replay.
 The test logs contain every per-case, per-sign, per-block error, floor, tolerance,
 and frame. Completion of the full 15-case 209M replay is a separate requirement;
 the focused result alone does not establish M6b acceptance.
+
+
+Final pinned replay: **all 28 tiny and 15 real cases pass**, with every block
+and final forecast checked. The complete per-block error/tolerance table,
+exact counts, SHA-256 pins, commands, resource usage, and log mapping are in
+[M6b final replay evidence](m6b-parity.md). No implementation source changes
+after the pinned replay. Independent review and publication remain separate.
