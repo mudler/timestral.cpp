@@ -1,6 +1,20 @@
 # CPU benchmarks (M6c)
 
-## Current result: latency fails, memory passes
+## Current standalone result: latency fails, memory passes
+
+The qualified standalone-ON runtime `68a5a53` records formal medians
+**36.392652770s (one thread)** and **18.281547354s (six threads)**.
+Both exceed the unchanged 1.5× limits; both RSS measurements pass.
+See [the complete formal result](#qualified-standalone-on-68a5a53-measured-latency-failure)
+for raw samples, resource qualifications, and source identities.
+The [public-source profile](m6c-on-public-profile.md) is diagnostic attribution,
+not an additional formal performance pass.
+
+The isolated [two-row wide-linear candidate](m6c-row2-col16.md#separately-authorized-contended-full-shape-correctness-pair)
+passes a full-shape byte comparison. Its performance remains **UNDECIDED**;
+it is not adopted. Numerical identity under contention does not establish speed.
+
+## Historical optimized-native result at b03d674
 
 The optimized runtime at `b03d674953008e7c557f4148892656eba171e700`
 passes full real M6b numerical parity, but fails the full M6c latency gate.
@@ -25,7 +39,7 @@ The reference samples remain in `timestral-native/m6c/reference-isolated-{1,6}.j
 Input sums match at `-8.5625`. Native output sum is `125.490760441`;
 the reference sum is `125.490904057544`. Sums do not replace parity gates.
 
-A rebuilt optimized Release profile now identifies `sdpa_f32` as the dominant
+A historical rebuilt optimized Release profile identifies `sdpa_f32` as the dominant
 full-shape kernel: 62.24% sampled self time, versus 32.07% in `linear_columns`.
 This supersedes the short-shape bottleneck assumption for 32k work.
 No further runtime change accompanies this profile or documentation update.

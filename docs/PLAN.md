@@ -1221,9 +1221,12 @@ docs/PLAN.md  docs/conversion.md  docs/parity.md  docs/quantization.md  docs/ben
   `eval_quant.py`):** max and mean error in normalized space (G4.3 metric); relative change
   of the mean weighted quantile loss and of MASE computed against held-out ground truth.
   See [the evaluation design](quantization.md) for truth construction, formulas, degenerate
-  values, coverage, and aggregation. Its proposed 64-series specification remains pending review.
+  values, coverage, and aggregation. The frozen mappings and recorded protocol are implemented; real 474-call quality remains NOTRUN on URI-lineage HOLD.
 - **Command:** `ctest --test-dir build -R test_quant --output-on-failure` and
-  `$VENV/bin/python scripts/eval_quant.py --models $TIMESTRAL_WORK/models --cpp build/examples/cli/timestral-cli`
+  `$VENV/bin/python scripts/record_quant_matrix.py --driver build/examples/eval-driver/timestral-eval-driver --models $TIMESTRAL_WORK/models.json --build-sidecar $TIMESTRAL_WORK/build-sidecar.json --output $TIMESTRAL_WORK/records`, then
+  `$VENV/bin/python scripts/eval_quant.py --manifest $TIMESTRAL_WORK/records/manifest.json --report $TIMESTRAL_WORK/report.json`.
+  Build the driver with `TIMESTRAL_BUILD_EVAL_DRIVER=ON` and exact runtime/source identities.
+  These commands require prior complete cohort admission; the current URI mismatch remains HOLD.
 - **Acceptance:** `f16`: mean normalized error <= 1e-3, quantile-loss change <= 0.5%;
   `q8_0`: mean normalized error <= 5e-3, quantile-loss change <= 1%; the error grows
   monotonically f32 < f16 < q8_0 < q6_k < q5_k < q4_k; sizes and numbers in
@@ -1231,6 +1234,12 @@ docs/PLAN.md  docs/conversion.md  docs/parity.md  docs/quantization.md  docs/ben
   only with measured numbers in the doc.
 
 ### M8: CLI and flat C ABI
+
+Transport is implemented, including eight C ABI exports and optional quantize tooling.
+The [current trained replay](standalone-mkl-trained-replay.md) passes 63 scoped invocations.
+This documentation consolidation does not accept M6c latency, M7 real quality,
+weight redistribution, or unimplemented M9 integration. See [CLI](cli.md),
+[C ABI](capi.md), and [quantization](quantization.md) for executable contracts.
 
 - **Goal:** `timestral-cli` (`info`, `forecast`, `bench`, `quantize`) and
   `include/timestral_capi.h`.

@@ -3,6 +3,22 @@
 Measured facts about the parity gates. Tolerances are in `docs/PLAN.md`, section D; this file
 records what was measured. It does not change a gate.
 
+## Current scoped standalone evidence
+
+The [trained standalone replay](standalone-mkl-trained-replay.md) tests runtime
+`68a5a53` without changing floors or tolerances. Full 5M strict M3/M6b passes
+**510/141 comparisons**; supplemental eight-case 209M M3 passes **784**;
+full 15-case 209M M6b passes **159**. All 63 model/transport invocations return0.
+The supplemental M3 union is not full 15-case 209M M3 acceptance.
+Static/shared trained C ABI, CLI, anchor, and real512 determinism checks are
+included with exact counts in that report.
+
+The [optional profile](standalone-mkl.md) remains OFF by default; its evidence
+must not be relabeled as default-native arithmetic acceptance.
+[Performance](benchmarks.md) and [quantized quality](quantization.md) remain
+separate: latency fails, and the real 474-call quality matrix is NOTRUN on URI HOLD.
+Historical measurements below keep their original scope and identities.
+
 ## G0.3: stored rope tables vs the tables the reference uses at run time
 
 Preview made in M0b by `tests/python/check_convert.py` (the full gate is M0d). It runs the

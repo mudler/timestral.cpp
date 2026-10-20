@@ -1,8 +1,51 @@
-# Quantization evaluation design
+# Quantization implementation and evaluation contract
 
-This document defines the approved M7 evaluation contracts, not an implemented evaluator or completed acceptance run.
-The 64-series composition has conditional approval; its explicit mappings, options, and anchor extraction design await final review.
-No measurements or model artifacts accompany this document.
+The recorded producer/scorer, frozen 79 mappings, protocol-v2 native driver,
+optional quantizer/CLI, and F32 anchor capture are implemented. This does not
+establish real-model quantization quality. The full **474-call matrix is NOTRUN**.
+Retained F16/Q8 artifacts fail strict licence-URI lineage equality against the
+original F32; the cohort remains **HOLD**. No validator exception is accepted here.
+Read-only storage/finite-value diagnostics do not replace this gate.
+
+The [standalone trained F32 replay](standalone-mkl-trained-replay.md) closes its
+scoped F32 prerequisites, not M7 quality. [Formal performance](benchmarks.md)
+remains a latency failure. The default backend remains native; optional standalone
+builds must identify their profile separately.
+
+## Current recorded workflow
+
+Build `TIMESTRAL_BUILD_EVAL_DRIVER=ON` with exact `TIMESTRAL_EVAL_RUNTIME_COMMIT`
+and `TIMESTRAL_EVAL_SOURCE_SHA256` provenance. The driver requires OpenSSL Crypto.
+The optional K writer additionally requires `TIMESTRAL_BUILD_QUANTIZE=ON` and its
+matching `TIMESTRAL_QUANTIZE_COMMIT`/`TIMESTRAL_QUANTIZE_SOURCE_SHA256` values.
+The current ON build passes exact quant/F16/Q8 synthetic tests without skips;
+its tiny driver passes two transport cases/172 checks. These are tool checks.
+
+`models.json` maps exactly `f32`, `f16`, `q8_0`, `q6_k`, `q5_k`, and `q4_k` to
+unique regular model files. The build sidecar records protocol2, actual executable
+hash, runtime commit, and complete source archive hash. After cohort admission:
+
+```sh
+"$VENV/bin/python" scripts/record_quant_matrix.py \
+  --driver build/examples/eval-driver/timestral-eval-driver \
+  --models "$TIMESTRAL_WORK/models.json" \
+  --build-sidecar "$TIMESTRAL_WORK/build-sidecar.json" \
+  --output "$TIMESTRAL_WORK/records"
+"$VENV/bin/python" scripts/eval_quant.py \
+  --manifest "$TIMESTRAL_WORK/records/manifest.json" \
+  --report "$TIMESTRAL_WORK/report.json"
+```
+
+The producer requires all 79 frozen cases and has no subset CLI. It launches 474
+processes and captures 79 anchors from the same-profile F32 run. Reduced formats
+must not supply replacement anchors. The scorer reads records only, not models.
+Require complete metadata/storage/provenance admission and immutable before/after
+pins before interpreting quality. A pilot needs a separately specified workflow;
+unsupported subset flags cannot create one.
+
+Historical implementation slices below retain their measured scope and source
+identities. Their earlier “preparatory” labels do not mean these tools are absent
+from the current tree.
 
 ## Preparatory Python implementation
 
@@ -21,17 +64,17 @@ Pin updates require explicit review of the source diff, input-identity checks, a
 Do not derive acceptance pins from current files at runtime or provide a runtime override.
 Fixture provenance records Python/NumPy versions, source/specification hashes, case hash, options, and input/truth hashes.
 These helpers produce in-memory arrays only; they do not write golden artifacts or load models.
-Model-weight hashes remain the responsibility of the future evaluation runner.
+The implemented recorded producer validates actual model-weight hashes.
 
 Focused tests cover small synthetic shapes and full-shape input identity for all 79 mappings, including missingness and covariate paths.
 The full-shape checks include canonical `nans` patch 12 and verify input bytes, shapes, dtypes, options, and provenance hashes.
 All metric operands validate before undefined propagation; unknown score statuses and NaN/negative loss operands fail in either order.
 Signed relative-change outputs remain valid JSON report values.
-Empty coverage fails; the future runner must require exactly the 79 frozen identities, not an arbitrary nonempty subset.
+Empty coverage fails; the producer requires exactly 79 frozen identities, not an arbitrary nonempty subset.
 They compare input bytes with a separately extracted original generator body and check future independence.
 They also check known-bad metrics, zero denominators, aggregation statuses, and error-match coverage HOLD.
 These tests are preparation, not M7 numerical acceptance.
-The model runner, CLI transport, and native anchor extraction remain unimplemented.
+The recorded runner, CLI transport, and native anchor extraction are implemented; their early slice tests do not establish real quality.
 `eval_quant.py` now orchestrates recorded-output validation, per-row scoring, separate suite summaries, and numerical checks.
 Its unit tests use explicitly mocked small fixtures, not model outputs or milestone evidence.
 
@@ -43,7 +86,7 @@ Reduced weights use GGML matmul with F32 graph inputs and outputs, followed by F
 GGML may internally round activations to F16; M7 quality metrics cover this difference, not strict reference parity.
 Cover `affine`, the residual patch projection, and the small-input head projection before the loader accepts F16.
 Only B.4 weights permit F16; all other tensors remain F32.
-Reject Q8, K-quants, BF16, and every unsupported type until their implementation slices.
+At this historical F16 slice, Q8, K-quants, and BF16 remained rejected; later slices add Q8_0 and K support.
 The converter permutes QKV before F16 casting and records output-type provenance without replacing licence/source metadata.
 Use synthetic fixtures and existing F32 regressions for this preparatory slice.
 M6c, the 5M F32 prerequisite, real-model quality evaluation, and milestone acceptance remain separate gates.
@@ -56,7 +99,7 @@ The converter quantizes each last-axis row after QKV permutation using `gguf.qua
 Packed uint8 rows contain 34 bytes per 32 values: a F16 scale and 32 signed coefficients.
 The writer receives the packed byte shape and explicit Q8_0 type, not a second logical-shape override.
 CPU fallback also quantizes F32 activations to Q8_0; quality evaluation covers that additional error.
-K-quants, Q8_1, and BF16 remain rejected.
+At this historical Q8_0 slice, K-quants remained rejected; later work adds them. Q8_1 and BF16 remain unsupported.
 
 Synthetic checks compare scalar block encoding, independent decoding, GGML reference quantization, and all three projection routes.
 Widths 32, 64, and 96 pass; widths 0, 1, 31, 33, and 63 fail without padding or cross-row blocks.
@@ -64,7 +107,7 @@ Cross-language byte checks require the built `test_q8` oracle through `TIMESTRAL
 The existing F16 rejection control now uses Q8_1 instead of the newly supported Q8_0.
 The existing Python unsupported-format control now uses Q4_K; F32/F16 byte-oracle coverage remains unchanged.
 The 209M metadata audit confirms all 142 B.4 weights satisfy row divisibility; no real weights are converted by synthetic tests.
-M6c and the 5M F32 prerequisite remain pending; this slice does not establish model-level acceptance.
+This historical slice does not establish model-level acceptance. Current scoped F32 replay passes; formal M6c latency still fails.
 
 ## Preparatory K-quant writer design
 
@@ -318,8 +361,8 @@ and pinned tested-source archive match ggml
 `e705c5fed490514458bdd2eaddc43bd098fcce9b` exactly.
 Builds/tests use `-j2`, serial CPU execution, and the hard 12 GiB guard.
 Concurrent F16/Q8 runtime edits are excluded from this validation.
-This internal extraction does not implement the quant-record driver or accept
-M6c, quantized quality, or the complete M7 milestone.
+This historical extraction predates the implemented quant-record driver. It does not
+accept M6c, quantized quality, or the complete M7 milestone.
 
 Let `f[i]` denote F32 C++ forecasts and `q[i]` denote reduced-precision forecasts.
 Include all horizon steps and quantiles within each row.
@@ -426,10 +469,10 @@ Do not require per-case, maximum-error, WQL, or MASE monotonicity.
 A tie or reversal fails the strict-order target; report measured results without sorting or adding slack.
 Any target change requires a separate measured decision under the plan.
 
-## Conditionally approved: frozen 64-series specification
+## Frozen 64-series specification
 
-The family composition has conditional approval, subject to review of the explicit inputs and options below.
-Implementation and acceptance execution remain on HOLD.
+The implemented generator uses the explicit inputs and options below.
+Real quality execution remains on HOLD; fixture implementation is not quality acceptance.
 The [generator-shaped case mappings](synthetic64-v1.cases.json) contain all 64 inputs, not golden baselines or forecast results.
 The JSON uses the existing `version` and `cases` shape; it does not embed forecast options unsupported by that schema.
 Apply the following resolved options to every item instead of relying on evolving defaults.
