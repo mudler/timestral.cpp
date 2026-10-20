@@ -1,4 +1,5 @@
 #include "scaler.hpp"
+#include "torch_sum.hpp"
 #include "common.hpp"
 #include <algorithm>
 #include <cmath>
@@ -61,26 +62,25 @@ InstanceStats instance_norm_stats(const Config& c, const std::vector<float>& x,
     validate(c, x, mask, rows, length);
     InstanceStats out;
     out.loc.resize(rows); out.scale.resize(rows); out.is_binary.resize(rows);
+    std::vector<float> weighted(length), weights(length), squares(length);
     for (size_t r = 0; r < rows; ++r) {
-        double sum = 0, count = 0;
         bool binary = true, any = false;
         for (size_t t = 0; t < length; ++t) {
             size_t i = r * length + t;
-            float weighted = x[i] * static_cast<float>(mask[i]);
-            sum += weighted; count += mask[i];
+            weighted[t] = x[i] * static_cast<float>(mask[i]);
+            weights[t] = static_cast<float>(mask[i]);
             any |= mask[i] != 0;
             binary &= !mask[i] || x[i] == 0 || x[i] == 1;
         }
-        float n = static_cast<float>(std::max(count, 1.0));
-        float loc = static_cast<float>(sum) / n;
-        double squares = 0;
+        float n = std::max(detail::torch_sum_f32(weights.data(), length), 1.0f);
+        float loc = detail::torch_sum_f32(weighted.data(), length) / n;
         for (size_t t = 0; t < length; ++t) {
             size_t i = r * length + t;
             float centered = (x[i] - loc) * static_cast<float>(mask[i]);
             float square = centered * centered;
-            squares += square;
+            squares[t] = square;
         }
-        float var = static_cast<float>(squares) / n;
+        float var = detail::torch_sum_f32(squares.data(), length) / n;
         float scale = std::max(std::sqrt(var), static_cast<float>(c.minimum_scale));
         out.is_binary[r] = binary && any;
         out.loc[r] = out.is_binary[r] ? 0.0f : loc;

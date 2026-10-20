@@ -1,7 +1,7 @@
 # Notices for adapted numerical helpers
 
-These notices apply to the indicated portions of `src/layers.cpp` and
-`src/head.cpp`, not to
+These notices apply to the indicated portions of `src/layers.cpp`,
+`src/head.cpp`, and `src/torch_sum.hpp`, not to
 the entire project. No project-wide code licence is selected here.
 
 ## SLEEF (Boost Software License 1.0)
@@ -23,6 +23,13 @@ Changes: scalar evaluation replaces vector intrinsics; standard-library
 handling covers exceptional inputs and exponent-range edges.
 
 ## PyTorch / ATen (BSD-style licence)
+
+`src/torch_sum.hpp::torch_sum_f32` adapts the contiguous F32 CPU reduction from
+`multi_row_sum`, `row_sum`, and `vectorized_inner_sum` in the pinned `SumKernel.cpp` below.
+Changes: scalar eight-lane arrays replace AVX2 vectors; a contiguous pointer/length API replaces TensorIterator dispatch.
+It retains the four-level cascade, four partial groups, scalar tails, and lane-combination order.
+`src/scaler.cpp::instance_norm_stats` calls this helper for weighted values, observation counts, and centered squares.
+The complete upstream licence retained in `PyTorch.txt` applies to this adapted helper; no project-wide licence is selected.
 
 `rms_square_mean` adapts the contiguous CPU cascade reduction from
 `multi_row_sum`, `row_sum`, and `vectorized_inner_sum`. `attention_exp`

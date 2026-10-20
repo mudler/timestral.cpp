@@ -15,6 +15,12 @@ ts_add_test(test_model_loader)
 add_test(NAME test_model_loader_209m COMMAND test_model_loader --real)
 set_tests_properties(test_model_loader_209m PROPERTIES SKIP_RETURN_CODE 77)
 
+ts_add_test(test_torch_sum)
+target_compile_definitions(test_torch_sum PRIVATE TS_HAVE_TORCH_SUM)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+  target_compile_options(test_torch_sum PRIVATE -ffp-contract=off)
+endif()
+
 ts_add_test(test_scaler)
 add_test(NAME test_scaler_units COMMAND test_scaler --unit)
 add_test(NAME test_scaler_209m COMMAND test_scaler --real)
