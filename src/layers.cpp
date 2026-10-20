@@ -2,32 +2,68 @@
 #include <cmath>
 #include <cstring>
 #include <algorithm>
+#if !defined(TS_LINEAR_DISABLE_AVX2) && (defined(__x86_64__) || defined(__i386__)) && (defined(__GNUC__) || defined(__clang__))
+#include <immintrin.h>
+#define TS_LINEAR_AVX2 1
+#endif
 namespace ts {
+#ifdef TS_LINEAR_AVX2
+// Lanes are independent output columns, never partial K reductions. Weight
+// rows are K-contiguous, so gather the same K coordinate from eight rows.
+__attribute__((target("avx2,fma")))
+static int64_t linear_columns(const float* w,const float* x,const float* b,
+                              float* y,int64_t k,int64_t n) {
+    int64_t col=0;
+    for(;col+8<=n;col+=8) {
+        __m256 sum=_mm256_setzero_ps();
+        for(int64_t start=0;start<k;start+=192) {
+            __m256 panel=_mm256_setzero_ps();
+            for(int64_t j=start;j<std::min(k,start+192);++j) {
+                const float* p=w+col*k+j;
+                __m256 weights=_mm256_set_ps(p[7*k],p[6*k],p[5*k],p[4*k],
+                                            p[3*k],p[2*k],p[k],p[0]);
+                panel=_mm256_fmadd_ps(weights,_mm256_set1_ps(x[j]),panel);
+            }
+            // Small dots have no extra add-to-zero boundary in the oracle.
+            sum=k<192?panel:_mm256_add_ps(sum,panel);
+        }
+        if(b)sum=_mm256_add_ps(sum,_mm256_loadu_ps(b+col));
+        _mm256_storeu_ps(y+col,sum);
+    }
+    return col;
+}
+#endif
 // F32 linear: reference-sized contractions use FMA panels. Small dots
 // accumulate sequential F32 FMA, matching the pinned CPU SGEMM.
 // Inputs and weights remain F32; no reference values enter this kernel.
-static void linear_f32(ggml_tensor* dst,int ith,int nth,void*) {
+void detail::linear_f32(ggml_tensor* dst,int ith,int nth,void*) {
     auto weight=dst->src[0], input=dst->src[1], bias=dst->src[2];
     const auto w=static_cast<const float*>(weight->data);
     const auto x=static_cast<const float*>(input->data);
     const auto b=bias ? static_cast<const float*>(bias->data) : nullptr;
     auto y=static_cast<float*>(dst->data);
     const int64_t k=weight->ne[0], n=weight->ne[1];
-    for(int64_t i=ith;i<ggml_nelements(dst);i+=nth) {
-        if(k>=192) {
-            // The pinned CPU reference SGEMM contracts 192-wide panels with
-            // F32 FMA, then adds the panels in F32 (verified byte-for-byte).
+    const int64_t rows=ggml_nelements(dst)/n;
+    for(int64_t row=ith;row<rows;row+=nth) {
+        int64_t col=0;
+#ifdef TS_LINEAR_AVX2
+        if(__builtin_cpu_supports("avx2") && __builtin_cpu_supports("fma"))
+            col=linear_columns(w,x+row*k,b,y+row*n,k,n);
+#endif
+        for(;col<n;++col) {
             float sum=0;
-            for(int64_t start=0;start<k;start+=192){float panel=0;
-                for(int64_t j=start;j<std::min(k,start+192);++j)
-                    panel=std::fma(w[(i%n)*k+j],x[(i/n)*k+j],panel);
-                sum+=panel;
+            if(k>=192) {
+                for(int64_t start=0;start<k;start+=192) {
+                    float panel=0;
+                    for(int64_t j=start;j<std::min(k,start+192);++j)
+                        panel=std::fma(w[col*k+j],x[row*k+j],panel);
+                    sum+=panel;
+                }
+            } else {
+                for(int64_t j=0;j<k;++j)
+                    sum=std::fma(w[col*k+j],x[row*k+j],sum);
             }
-            y[i]=b?sum+b[i%n]:sum;
-        } else {
-            float sum=0;
-            for(int64_t j=0;j<k;++j)sum=std::fma(w[(i%n)*k+j],x[(i/n)*k+j],sum);
-            y[i]=b?sum+b[i%n]:sum;
+            y[row*n+col]=b?sum+b[col]:sum;
         }
     }
 }
@@ -38,7 +74,7 @@ ResidualOutput residual_block(ggml_context* ctx, const Model& m, ggml_tensor* x)
         auto weight=m.tensor(w), bias=m.tensor(b);
         if(weight->ne[0]!=input->ne[0] || bias->ne[0]!=weight->ne[1] || ggml_nelements(bias)!=bias->ne[0]) throw Error("invalid residual weight/bias dimensions");
         ggml_tensor* args[]={weight,input,bias};
-        return ggml_custom_4d(ctx,GGML_TYPE_F32,weight->ne[1],input->ne[1],input->ne[2],1,args,3,linear_f32,1,nullptr);
+        return ggml_custom_4d(ctx,GGML_TYPE_F32,weight->ne[1],input->ne[1],input->ne[2],1,args,3,detail::linear_f32,1,nullptr);
     };
     auto hidden=linear("patch.hidden.weight","patch.hidden.bias",x);
     auto out=linear("patch.out.weight","patch.out.bias",ggml_silu(ctx,hidden));
@@ -61,7 +97,7 @@ ggml_tensor* affine(ggml_context* ctx,const Model& m,const std::string& base,ggm
     auto w=m.tensor(base+".weight"); auto b=bias?m.tensor(base+".bias"):nullptr;
     if(x->type!=GGML_TYPE_F32 || !ggml_is_contiguous(x) || x->ne[3]!=1 || w->ne[0]!=x->ne[0] || (b && ggml_nelements(b)!=w->ne[1]))throw Error("invalid affine layout");
     ggml_tensor* args[]={w,x,b};
-    return ggml_custom_4d(ctx,GGML_TYPE_F32,w->ne[1],x->ne[1],x->ne[2],1,args,b?3:2,linear_f32,1,nullptr);
+    return ggml_custom_4d(ctx,GGML_TYPE_F32,w->ne[1],x->ne[1],x->ne[2],1,args,b?3:2,detail::linear_f32,1,nullptr);
 }
 // Adapted from ATen SumKernel.cpp at 5c4886908584029761b579af026dcfb627c84070.
 // Copyright/licence and source scope: third_party/notices/PyTorch.txt and README.md.

@@ -19,3 +19,8 @@ ggml_tensor* swiglu(ggml_context*,const Model&,const std::string&,ggml_tensor*);
 namespace ts {
 ggml_tensor* sigmoid(ggml_context*,ggml_tensor*);
 }
+
+namespace ts::detail {
+// Internal custom-op callback; exposed for exact scalar-oracle tests.
+void linear_f32(ggml_tensor*,int,int,void*);
+}
