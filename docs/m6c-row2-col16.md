@@ -70,3 +70,28 @@ the product worktree or committed as production code.
 Jobs2958(build/exact),2960(controls),2964(pins/admissionHOLD),2974(closingpins)
 are accounted and finished. Hard12GiB and serial-j2 constraints hold throughout.
 Root owns any continuation; the heavy slot is released.
+
+## Root-authorized frozen full-shape attempt2: admission HOLD
+
+A new attempt preserves the original600-second HOLD and uses the exact same
+frozen candidate/baseline binaries without edits or rebuild. All **363 entries**
+are reverified before and after the attempt, including references, SDK, model,
+source archives and executables. Independent bounded code review accepts the
+finite-input arithmetic/ownership reasoning, but not performance adoption.
+Actual concurrent focused coverage remains K193,N33,rows35; allocation failure
+fallback remains source-inspected, not injected. Exact matrix count is57024,
+not the earlier43200 baseline count.
+
+The new admission screen completes **31 samples /approximately600seconds**,
+with maximum quiet streak **zero**. Final load1 is **27.78**, pressureavg10
+**56.59%**. It never satisfies the approved three-sample admission condition.
+`HOLD.json` explicitly records no model runs. No full32k output files or timing
+summary exist; the pending full-byte comparison and matchedN1warmrepeat3 remain
+unexecuted. Exit0 means the bounded screening/pin closure completes, not a speed
+or numerical gate pass. No new correctness claim is inferred from this monitor.
+
+Evidence under `timestral-m6c-row2-col16/fullshape-attempt2`: `run.py`,
+`before.json`, `after.json`, `screening.jsonl`, `admission-00.log` through
+`admission-30.log`, and `HOLD.json`. Both attempts remain intact. Job2978 is
+finished, no model child is running, and the heavy slot is released. No automatic
+retry or production adoption follows; performance remains **UNDECIDED**.
