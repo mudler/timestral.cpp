@@ -1,5 +1,6 @@
 // M6c measurement entry point only; the general CLI follows in M8.
 #include "timestral.h"
+#include "transport.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -24,6 +25,7 @@ static std::string quoted(const std::string& s) {
     return out+'"';
 }
 int main(int argc, char** argv) {
+    if(argc>1 && std::string(argv[1])!="bench")return cli_transport(argc,argv);
     try {
         if (argc<2 || std::string(argv[1])!="bench")
             throw std::runtime_error("usage: timestral-cli bench --model FILE [--context-len 32768 --horizon 1024 --variates 1 --threads 1 --repeat 5 --warmup 1]");

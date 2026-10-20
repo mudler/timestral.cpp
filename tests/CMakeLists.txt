@@ -101,3 +101,15 @@ if(UNIX AND TIMESTRAL_SHARED)
 endif()
 add_test(NAME test_capi_209m COMMAND test_capi --real)
 set_tests_properties(test_capi_209m PROPERTIES SKIP_RETURN_CODE 77)
+
+# CLI transport harness needs ctypes (shared library), but no numerical Python
+# dependency for the tiny checks. Real fixture loading additionally uses gguf.
+if(TIMESTRAL_SHARED AND TIMESTRAL_BUILD_CLI)
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME test_cli COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_cli.py
+      --cli $<TARGET_FILE:timestral-cli> --library $<TARGET_FILE:timestral>
+      --model ${CMAKE_CURRENT_SOURCE_DIR}/fixtures/tiny/timestral-tiny-f32.gguf
+      --scratch ${CMAKE_CURRENT_BINARY_DIR}/cli-fixtures)
+  endif()
+endif()
