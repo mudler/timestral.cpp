@@ -42,6 +42,7 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 add_subdirectory(third_party/ggml)
 
 set(TIMESTRAL_SRC
+    src/timestral_capi.cpp
     src/common.cpp
     src/backend.cpp
     src/model_loader.cpp
@@ -64,6 +65,7 @@ endif()
 
 if(TIMESTRAL_SHARED)
   add_library(timestral SHARED ${TIMESTRAL_SRC})
+  target_compile_definitions(timestral PUBLIC TIMESTRAL_CAPI_SHARED PRIVATE TIMESTRAL_CAPI_BUILD)
 else()
   add_library(timestral STATIC ${TIMESTRAL_SRC})
 endif()
