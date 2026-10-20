@@ -113,3 +113,94 @@ TIMESTRAL_TEST_GGUF="$MODEL" "$BUILD/tests/test_forecast_determinism" --real-512
 Keep this bounded candidate pending root review. Reprofile the aggregate before
 proposing another optimization. Linear cache packing remains a separate scope;
 no packing or additional runtime change is included here.
+
+## Aggregate profile and next proposed linear experiment
+
+A profile-only follow-up rebuilds implementation
+`ef752a609d53dcbac38d9ce7e744ddf9bbcfd246` in Release mode with `-pg`
+for C/C++ and executable linking. Builds use `-j2`; the isolated CPU process
+runs under the 12 GiB guard. One 32768/1024 forecast at one thread, zero
+warmups, and one repeat completes in 127.241399 seconds, exiting zero.
+Peak RSS is 944173056 bytes; the output sum remains `125.490760441`.
+Source pins match before/after; executable hash checks pass.
+This cold instrumented run is diagnostic, not an acceptance timing.
+
+| Symbol | Sampled self seconds | Share |
+|---|---:|---:|
+| `linear_columns` | 92.46 | 76.85% |
+| `attention_values` | 9.81 | 8.15% |
+| `attention_keys` | 9.37 | 7.79% |
+| Remaining `detail::sdpa_f32` body | 4.98 | 4.14% |
+| `detail::linear_f32` | 1.39 | 1.16% |
+
+Linear contraction is now the dominant measured bottleneck.
+Remaining attention totals approximately 20.08% of sampled self time.
+Sampling, instrumentation, and uninstrumented library calls limit exact
+wall-time attribution. The six-thread breakdown remains unmeasured.
+
+Evidence under `timestral-native/m6c-qk/profile-32k`:
+`configure.log`, `build.log`, `source-commit.txt`, `source-after.txt`,
+`binary.sha256`, `binary-after.log`, `native-32k.json`, `native-32k.log`,
+`native-32k.gprof`, and `gmon.out`.
+
+### Ownership findings
+
+`Model` owns the read-only mapped weights and outlives its encoders.
+The public tensor lookup returns pointers into that mapping; packing must not
+replace those pointers or mutate their bytes.
+`Encoder` owns a persistent `GraphRunner`, but `GraphRunner::begin()` destroys
+and recreates graph metadata on every invocation. The allocator persists;
+graph tensor pointers do not. A custom callback's raw userdata has no automatic
+C++ ownership or destruction hook.
+`Forecaster` retains a predictor/encoder across symmetric passes and blocks,
+but standalone component APIs also create short-lived encoders.
+
+Consequently, a process-global cache keyed only by tensor address is unsafe:
+model unload/reload can reuse addresses. A graph-owned packed-weight cache
+requires explicit owner lifetime and clearing before metadata destruction.
+Persistent all-model packing duplicates roughly the linear weight footprint
+and changes ownership beyond a focused callback experiment.
+
+### Proposed bounded tile packing, pending root approval
+
+Start with callback-local scratch rather than a persistent per-model cache:
+pack one eight-output-column tile as `packed[j*8+lane] = w[(col+lane)*K+j]`.
+Only the memory layout changes; values copy bit-for-bit.
+Use contiguous eight-float loads instead of eight strided scalar weight loads.
+Reuse that tile across all input rows before packing the next output tile.
+Process four independent input rows together to reuse each weight vector and
+hide sequential-FMA latency without reducing across K or SIMD lanes.
+Do not change graph task counts, model ownership, or attention in this experiment.
+
+Each output retains its own panel accumulator, initialized to positive zero
+for each 192-wide K panel. Traverse K in ascending order within each panel.
+Add each completed panel to its own F32 running sum in ascending panel order.
+Apply bias once, after the final panel. Preserve the small-dot path and all
+row/column tails with the existing scalar/SIMD behavior.
+A candidate threshold of at least 32 input rows limits packing overhead;
+this is a tunable execution-shape threshold, not a model-specific dimension.
+Benchmark threshold choices separately rather than bundling other changes.
+
+Scratch allocation is `8*K*sizeof(float)` bytes per callback, allocated once
+and reused across output tiles, then released when that callback returns.
+At K=2048 this is 65536 bytes, independent of sequence length and layer count.
+The general implementation must check multiplication overflow and allocation
+failure; dimensions remain metadata-driven. No packed pointers survive compute.
+With production linear nodes still single-task, scratch has no shared writers.
+
+Packing performs one extra read and write per complete weight element on each
+callback, not on every input row. At 1056 rows, that preparation is amortized
+over 1056 uses of each weight; four-row blocks share weight-vector loads.
+The packed tile remains small enough for cache reuse, though cache-hit behavior
+requires measurement. Symmetric passes repack independently; no cross-pass
+amortization is claimed. Short workloads below the threshold avoid packing.
+A separate persistent-cache proposal is unnecessary unless measured packing
+cost or repeated invocations justify its extra ownership and memory complexity.
+
+Before retaining this candidate, require exact old-scalar oracle comparisons
+at 191/192/193 K boundaries, row thresholds and four-row tails, output tails,
+bias/no-bias, random and adversarial finite inputs, and forced ISA fallback.
+Then run components, all tiny parity, one-/six-thread forecast determinism,
+warm isolated 512 measurements, and one matched cold 32k forecast.
+Reprofile only after a bounded win. Full acceptance remains a separate gate.
+No packing or runtime source change is included in this profile-only report.
