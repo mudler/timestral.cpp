@@ -50,19 +50,32 @@ static void sdpa_f32(ggml_tensor* dst,int ith,int nth,void* split_data) {
     }
 }
 }
-static void keypack_cases() {
+static void keypack_cases(bool expect_packing) {
     size_t bytes=0;
     if(!ts::detail::keypack_bytes(12,1056,64,16*1024*1024,bytes) || bytes!=3244032 ||
        ts::detail::keypack_bytes(SIZE_MAX,128,64,SIZE_MAX,bytes) ||
        ts::detail::keypack_bytes(12,1056,64,1,bytes))throw std::runtime_error("size guards");
     size_t cases=0,packed_heads=0,allocation_fallbacks=0,size_fallbacks=0;
     for(int seq:{127,128,129,132})for(int split:{0,seq-3,seq-4})
-    for(int hd:{7,33,65})for(int threads:{1,4,6}) {
+    for(int hd:{7,33,65})for(int threads:{1,4,6})
+    for(int pattern=0;pattern<3;++pattern) {
         const int H=2,R=2,D=H*hd;
         std::vector<float> q(R*seq*D),k(q.size()),v(q.size()),mask(R*seq*seq);
         for(size_t i=0;i<q.size();++i) {
             q[i]=float(int(i%17)-8)/32;k[i]=float(int((i*7)%23)-11)/32;
             v[i]=i%4==0?-0.f:float(int(i%31)-15)/16;
+            if(pattern==1) {
+                // Alternating wide key exponents force cancellation while
+                // bounded queries keep logits and oracle outputs finite.
+                q[i]=std::ldexp(float(int(i%3)-1),-12);
+                k[i]=std::ldexp(i%2?1.f:-1.f,int(i%41)-20);
+                v[i]=std::ldexp(float(int(i%3)-1),int(i%81)-40);
+            }
+            if(pattern==2) {
+                q[i]=i%2?-0.f:0.f;
+                k[i]=i%4==0?-0.f:i%4==1?0.f:i%4==2?1.e-38f:-1.e-38f;
+                v[i]=k[i];
+            }
         }
         for(int r=0;r<R;++r)for(int t=0;t<seq;++t)for(int j=0;j<seq;++j)
             mask[(r*seq+t)*seq+j]=j>t?-INFINITY:0.f;
@@ -73,7 +86,9 @@ static void keypack_cases() {
         qt.data=q.data();kt.data=k.data();vt.data=v.data();mt.data=mask.data();
         dst.src[0]=&qt;dst.src[1]=&kt;dst.src[2]=&vt;dst.src[3]=&mt;
         void* data=reinterpret_cast<void*>(uintptr_t(split));dst.data=expected.data();
-        oracle::sdpa_f32(&dst,0,1,data);dst.data=out.data()+1;
+        oracle::sdpa_f32(&dst,0,1,data);
+        for(float f:expected)if(!std::isfinite(f))throw std::runtime_error("nonfinite focused oracle");
+        dst.data=out.data()+1;
         for(int mode=0;mode<4;++mode) {
             ts::detail::KeyPackProbe probe;
             probe.fail_allocation=mode==1;probe.force_overflow=mode==3;
@@ -87,10 +102,8 @@ static void keypack_cases() {
                 throw std::runtime_error("keypack exact/immutability");
             // H=2,nth=4 assigns alternating queries: 125/126 eligible queries
             // own 31/32 each; 129 owns 32/33, explicitly crossing the threshold.
-            if(mode==0 && threads==1 && seq>=128 && probe.packed_heads && probe.packed_heads!=size_t(R*H))
-                throw std::runtime_error("batch/head invalidation");
-            if(mode==0 && probe.packed_heads) {
-                size_t expected_packs=0;
+            size_t expected_packs=0;
+            if(expect_packing && seq>=128 && mode==0) {
                 for(int r=0;r<R;++r)for(int h=0;h<H;++h)for(int ith=0;ith<threads;++ith) {
                     int owned=0;
                     for(int t=0;t<seq;++t) {
@@ -99,8 +112,13 @@ static void keypack_cases() {
                     }
                     if(owned>=32)++expected_packs;
                 }
-                if(probe.packed_heads!=expected_packs)throw std::runtime_error("owned threshold/reset count");
             }
+            if(probe.packed_heads!=expected_packs)
+                throw std::runtime_error("dispatch/owned threshold/reset count");
+            const size_t expected_alloc=expect_packing && seq>=128 && mode==1?size_t(threads):0;
+            const size_t expected_size=expect_packing && seq>=128 && mode>=2?size_t(threads):0;
+            if(probe.allocation_fallbacks!=expected_alloc || probe.size_fallbacks!=expected_size)
+                throw std::runtime_error("dispatch/fallback coverage count");
             packed_heads+=probe.packed_heads;allocation_fallbacks+=probe.allocation_fallbacks;
             size_fallbacks+=probe.size_fallbacks;++cases;
         }
@@ -108,8 +126,16 @@ static void keypack_cases() {
     std::cout<<"PASS "<<cases<<" focused keypack comparisons packed_heads="<<packed_heads
              <<" allocation_fallbacks="<<allocation_fallbacks<<" size_fallbacks="<<size_fallbacks<<'\n';
 }
-int main() {
-    keypack_cases();
+int main(int argc,char** argv) {
+    bool expect_packing=false;
+#if (defined(__x86_64__) || defined(__i386__)) && (defined(__GNUC__) || defined(__clang__))
+    expect_packing=__builtin_cpu_supports("avx2") && __builtin_cpu_supports("fma");
+#endif
+    // The manually linked scalar-fallback executable must declare its build.
+    if(argc==2 && std::string(argv[1])=="--expect-scalar")expect_packing=false;
+    else if(argc!=1)throw std::runtime_error("usage: test_attention [--expect-scalar]");
+    std::cout<<"EXPECT keypack="<<(expect_packing?"enabled":"disabled")<<'\n';
+    keypack_cases(expect_packing);
     std::mt19937 rng(821);size_t cases=0,values=0;
     for(int hd:{1,7,8,15,16,17,23,31,32,33,63,64,65})
     for(int seq:{1,3,7,8,9,15,16,17,23,24,25,31,32,33,65})

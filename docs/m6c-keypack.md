@@ -122,3 +122,50 @@ Scratch directory relative to the work root: `timestral-native/m6c-keypack`.
 | `host-before-gates.log`, `host-after-gates.log` | Read-only load/pressure/cgroup/process snapshots |
 | `source-base.tar`, `source.patch`, `before.sha256`, `after.log` | Reconstructable tested source and before/after executable hashes |
 | `source-commit.txt` | Final local WIP source pin |
+
+## Test-only review follow-up
+
+This follow-up changes only `tests/test_attention.cpp` and this document.
+Runtime code, the frozen scalar oracle, eager shape-eligible allocation, and
+all thresholds remain unchanged. No internal runtime capability API is needed:
+the test checks the same compiler/architecture guard and runtime AVX2/FMA CPU
+features. The manually linked forced-scalar executable declares its build using
+`--expect-scalar`; unsupported hosts automatically expect no activation.
+
+Activation assertions now require the exact expected packed-head count for
+every case, including zero. They no longer skip validation when the observed
+count is zero. Injected fallback counters likewise must equal expected values.
+An AVX2/FMA host therefore cannot silently pass if eligible packing disappears.
+A negative control runs the forced-scalar executable without its scalar
+expectation: it fails nonzero with the dispatch assertion, confirming the test
+rejects missing activation on this supported host. This is an intentional
+negative control, not an oracle failure.
+
+The focused S>=128 inputs now add cancellation/wide-exponent Q/K/V samples
+and signed-zero/subnormal samples. Queries bound the exponent range so oracle
+outputs remain finite; every focused oracle output is checked for finiteness.
+Existing masks, ownership thresholds, head/batch resets, immutability checks,
+and output sentinels apply to these patterns as well.
+
+Completed exact checks:
+
+- Optimized: **1,296 focused comparisons**, **1,944 packed head instances**,
+  **891 injected allocation fallbacks**, **1,782 size/budget/overflow fallbacks**.
+- Forced scalar: **1,296 focused comparisons**, all packing/fallback counters
+  zero as required by the disabled dispatch expectation.
+- Both builds retain **9,360 exact comparisons / 22,248,000 values** from the
+  unchanged existing oracle matrix.
+- Updated test binaries and reconstructable source archive/patch pass all four
+  before/after SHA-256 checks. No redundant component/full suite runs here.
+
+Build/test execution is serial under 12 GiB, with `-j2` compilation.
+Read-only host snapshot still shows contention: load **23.26 / 34.15 / 35.83**
+on 12 logical CPUs and CPU pressure `some` **21.74% / 20.69% / 33.62%**.
+Visible cgroup CPU quota remains unlimited with zero recorded throttling.
+No benchmark is authorized or launched. Performance remains **UNDECIDED**.
+Concurrent packed-callback stress and sanitizers remain unclaimed coverage.
+
+Evidence under `timestral-native/m6c-keypack/test-followup`:
+`build.log`, `fallback-link.log`, `oracle.log`, `oracle-fallback.log`,
+`negative-missing-scalar-expectation.log`, `host.log`, `source-base.tar`,
+`source.patch`, `before.sha256`, `after.log`, and the two archived test binaries.
