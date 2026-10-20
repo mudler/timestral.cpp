@@ -1220,6 +1220,8 @@ docs/PLAN.md  docs/conversion.md  docs/parity.md  docs/quantization.md  docs/ben
 - **Metrics (vs the f32 C++ output, on all C.2 cases plus 64 synthetic series from
   `eval_quant.py`):** max and mean error in normalized space (G4.3 metric); relative change
   of the mean weighted quantile loss and of MASE computed against held-out ground truth.
+  See [the evaluation design](quantization.md) for truth construction, formulas, degenerate
+  values, coverage, and aggregation. Its proposed 64-series specification remains pending review.
 - **Command:** `ctest --test-dir build -R test_quant --output-on-failure` and
   `$VENV/bin/python scripts/eval_quant.py --models $TIMESTRAL_WORK/models --cpp build/examples/cli/timestral-cli`
 - **Acceptance:** `f16`: mean normalized error <= 1e-3, quantile-loss change <= 0.5%;
