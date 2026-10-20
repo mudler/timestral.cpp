@@ -50,7 +50,14 @@ static void projection(const Model& model){
  GraphRunner run;auto ctx=run.begin();auto x=ggml_new_tensor_3d(ctx,GGML_TYPE_F32,16,3,2);ggml_set_input(x);auto y=residual_block(ctx,model,x);auto projection=ggml_mul_mat(ctx,model.tensor("patch.out.weight"),ggml_silu(ctx,y.hidden));projection=ggml_add(ctx,projection,model.tensor("patch.out.bias"));auto oracle=ggml_add(ctx,projection,y.output->src[1]);run.allocate({y.output,oracle});run.upload(x,std::vector<float>(96,.01f));run.compute();check(run.read(y.output)==run.read(oracle),"residual oracle");
  GraphRunner affine_run;ctx=affine_run.begin();auto a=ggml_new_tensor_3d(ctx,GGML_TYPE_F32,256,3,2);ggml_set_input(a);auto got=affine(ctx,model,"blk.0.attn.0.qkv",a,model.config().attn_bias);auto want=ggml_mul_mat(ctx,model.tensor("blk.0.attn.0.qkv.weight"),a);if(model.config().attn_bias)want=ggml_add(ctx,want,model.tensor("blk.0.attn.0.qkv.bias"));affine_run.allocate({got,want});affine_run.upload(a,std::vector<float>(1536,.01f));affine_run.compute();check(affine_run.read(got)==affine_run.read(want),"affine oracle");
 }
-int main(){try{
+int main(int argc,char** argv){try{
+ if(argc==4&&std::string(argv[1])=="--fixture"){
+  std::string mode=argv[3];check(mode=="f32"||mode=="f16"||mode=="q8_0","fixture storage option");
+  fixture(argv[2],false,false,false,mode=="f16"?GGML_TYPE_F16:mode=="q8_0"?GGML_TYPE_Q8_0:GGML_TYPE_F32);return 0;
+ }
+ if(argc==3&&std::string(argv[1])=="--validate"){
+  auto m=Model::load(argv[2]);for(auto& n:m.tensor_names()){auto t=m.tensor(n);if(reduced_weight_name(n))check(t->type==GGML_TYPE_Q6_K||t->type==GGML_TYPE_Q5_K||t->type==GGML_TYPE_Q4_K,"K output type");else check(t->type==GGML_TYPE_F32,"excluded output type");}return 0;
+ }
  for(auto type:{GGML_TYPE_Q4_K,GGML_TYPE_Q5_K,GGML_TYPE_Q6_K}){
   for(int width:{256,512,768})check(weight_type_allowed("head.out.weight",type,width),"K compatible row");
   for(int width:{0,16,32,192,255,257})check(!weight_type_allowed("head.out.weight",type,width),"K incompatible row");

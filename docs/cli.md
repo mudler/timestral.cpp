@@ -1,8 +1,35 @@
 # Approved preparatory CLI design
 
-Add forecast and info alongside the unchanged bench command. Quantize remains
-unsupported until its separately approved implementation. This transport work
-does not accept M6c performance, M7 quantization, or the whole M8 milestone.
+Forecast and info run alongside the unchanged bench command.
+The optional quantize command requires `TIMESTRAL_BUILD_QUANTIZE=ON`.
+With that option OFF, the existing unsupported-command behavior remains unchanged.
+This transport work does not accept M6c performance, M7 quality, or the whole M8 milestone.
+
+## Optional quantize command
+
+```text
+timestral-cli quantize <in.gguf> <out.gguf> q6_k|q5_k|q4_k
+```
+
+Only F32 GGUF inputs are accepted; this command does not requantize F16, Q8, or K inputs.
+Existing destinations, aliases, and symlinks are rejected without clobbering files.
+Exit 2 means invalid argument count or output type; exit 1 means conversion or reporting failure.
+Exit 0 prints one JSON object with `input_sha256`, `output_sha256`, `input_bytes`, `output_bytes`,
+`converted_tensors`, `copied_tensors`, and `type`.
+If publication succeeds but directory durability is unconfirmed, exit 1 explicitly reports that output exists and no rollback occurred.
+A stdout failure after publication also reports that output exists.
+The optional tool library owns OpenSSL; inference-only builds do not acquire that dependency.
+Forecast CSV parsing, info output, and bench contracts remain unchanged.
+
+The isolated Slice B build uses `8141790` plus CLI-only changes.
+ON CTest passes 3/3: existing transport, core writer, and quantize subprocess checks.
+OFF CTest passes 2/2: existing transport and unchanged unsupported quantize behavior.
+Each transport run performs 39 process checks and six bytewise comparisons on synthetic tiny inputs, including info and a short bench.
+The final quantize harness performs 26 process checks, including all three formats and a postpublication `/dev/full` report failure.
+No real forecasting replay or model-quality evaluation runs for this CLI slice.
+The ON/OFF inference shared libraries are byte-identical; only the enabled CLI links libcrypto.
+The initial build archive SHA-256 is `4de473da75f389f52f9bb42dbe84fda57ff8c2977b046495e20736b5cf062874`.
+The final tested archive, adding only the report-failure test, is `a5d8cfc2680152bdf8699b1cd61b8635c7d13f9f53cddc6650fb607d3bea1644`.
 
 Forecast calls the flat C ABI. Repeated context files form a batch with identical
 T/V. Every present covariate file flag repeats exactly B times, positionally,

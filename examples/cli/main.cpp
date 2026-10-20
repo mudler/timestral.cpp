@@ -1,6 +1,9 @@
 // M6c measurement entry point only; the general CLI follows in M8.
 #include "timestral.h"
 #include "transport.hpp"
+#ifdef TIMESTRAL_CLI_QUANTIZE
+#include "quantize_transport.hpp"
+#endif
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -25,6 +28,9 @@ static std::string quoted(const std::string& s) {
     return out+'"';
 }
 int main(int argc, char** argv) {
+#ifdef TIMESTRAL_CLI_QUANTIZE
+    if(argc>1 && std::string(argv[1])=="quantize")return cli_quantize(argc,argv);
+#endif
     if(argc>1 && std::string(argv[1])!="bench")return cli_transport(argc,argv);
     try {
         if (argc<2 || std::string(argv[1])!="bench")

@@ -133,3 +133,16 @@ if(TIMESTRAL_BUILD_QUANTIZE)
   ts_add_test(test_quant)
   target_link_libraries(test_quant PRIVATE timestral-quantize OpenSSL::Crypto)
 endif()
+
+if(TIMESTRAL_BUILD_CLI)
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    if(TIMESTRAL_BUILD_QUANTIZE)
+      add_test(NAME test_quant_cli COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_quant_cli.py
+        --cli $<TARGET_FILE:timestral-cli> --fixture-tool $<TARGET_FILE:test_quant>)
+    else()
+      add_test(NAME test_quant_cli_disabled COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_quant_cli.py
+        --cli $<TARGET_FILE:timestral-cli> --disabled)
+    endif()
+  endif()
+endif()

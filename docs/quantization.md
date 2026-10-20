@@ -85,7 +85,11 @@ Prepublication failures remove temporary files; postpublication directory-sync f
 Internal test hooks exercise failure cleanup and races; the public API exposes no failure-injection option.
 
 Synthetic D256/FF256 fixtures exercise complete files and all projection routes without trained weights.
-The first slice implements core writing and runtime policy only; positional CLI integration remains a separate slice.
+The core slice implements writing and runtime policy.
+The separately enabled CLI slice exposes exactly `quantize <in.gguf> <out.gguf> q6_k|q5_k|q4_k`.
+It links the optional tool library only when `TIMESTRAL_BUILD_QUANTIZE=ON`; OFF preserves unsupported-command behavior.
+Synthetic subprocess tests check all three output formats, actual hashes, schema loading, usage errors, and no-clobber behavior.
+Durability-uncertain publication returns exit 1 with an explicit output-exists diagnostic, not a rollback claim.
 No source snapshot, test, or synthetic conversion establishes M6c, 5M parity, or model-level quantization acceptance.
 
 The synthetic core-writer build uses base commit `a17a8b29302c53a23dc7b99cf1c0fa6b972ecef9` plus the K slice.

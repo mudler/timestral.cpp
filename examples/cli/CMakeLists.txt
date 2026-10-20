@@ -1,2 +1,7 @@
 add_executable(timestral-cli main.cpp transport.cpp)
 target_link_libraries(timestral-cli PRIVATE timestral)
+if(TIMESTRAL_BUILD_QUANTIZE)
+  target_sources(timestral-cli PRIVATE quantize_transport.cpp)
+  target_compile_definitions(timestral-cli PRIVATE TIMESTRAL_CLI_QUANTIZE)
+  target_link_libraries(timestral-cli PRIVATE timestral-quantize)
+endif()
