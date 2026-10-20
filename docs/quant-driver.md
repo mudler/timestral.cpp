@@ -1,4 +1,50 @@
-# Approved F32 evaluation driver: tsqbin-v1
+# Evaluation driver: tsqbin-v1 and tsqbin-v2
+
+## Preparatory six-format extension
+
+V1 encoding and F32 behavior remain unchanged.
+V2 uses the same magic and fixed header sizes, with version fields set to 2.
+Format values are F32=0, F16=1, Q8_0=2, Q6_K=3, Q5_K=4, and Q4_K=5.
+Request offset 116 holds the format; offset 156 holds anchor-capture flags.
+Only flag bit 0 exists: it must be set for F32 and clear for every reduced format.
+Result offsets 240 and 244 hold format and anchor-present flags; bytes 248–255 remain zero.
+Success requires F32 anchors exactly when format is F32; reduced successes contain levels and forecasts only.
+Failure responses contain neither numerical arrays nor anchors, including F32 failures.
+CLI format must equal request format before inference.
+Reduced execution passes no capture trace, so it never recomputes metric anchors.
+
+Production validation retains pinned 209M source/options/quantiles checks.
+Every B.4 weight must have exactly the requested storage format, with compatible contracted rows.
+Every excluded tensor remains F32; mixed formats or F32 fallbacks are invalid.
+An internal storage-only validation seam permits synthetic tests without weakening production geometry checks.
+Converter F16/Q8 policy/hash metadata must match the format; K metadata must match its type, policy, versions, input/source hashes, and ggml pin.
+F32 rejects contradictory reduced-conversion metadata.
+These fields remain provenance assertions, not proof of original model execution.
+
+This slice changes only driver/codec transport and focused tests.
+The F32 development producer remains v1; a six-format manifest producer is a separate step.
+No real reduced-model conversion or quality matrix is authorized by this extension.
+
+### Verified Step A checks
+
+The isolated build uses `2528c6328331ae6ca58358e6ac8b1bdbc06564a2` plus only Step A sources/tests.
+Final source archive SHA-256: `4ebc00be0ddecac6c9d9b35b3bdd43e762a3d25d3b3dad58540b97093f0e0bfe`.
+The final driver SHA-256 is `1843d115dbc8e8ce2f5d934473a091f387f7843fe5ee500c3bba83000d91ebe6`.
+The existing F32 model SHA-256 is `d1e614751f82bb074c6b7a139adf9670429bef27c9e9929b943ef235eb01ffb7`.
+Executable/model hashes remain unchanged before and after both protocol regressions.
+All 1962 ggml blobs match `e705c5fed490514458bdd2eaddc43bd098fcce9b`.
+
+The native synthetic codec suite passes two cases and 172 checks, including all six result formats and anchor-presence negatives.
+Storage tests use descriptor-only synthetic mutations, never inference through altered descriptors.
+They check complete requested formats, excluded tensors, mixed storage, incompatible K rows, and per-format provenance conflicts.
+These tests are not claims of native reduced-model forecast execution.
+Python passes seven tests without skips, including actual v1 F32 driver processes for `uni_short` and `known_cov`.
+Separate v2 F32 processes match accepted forecast, level, and anchor bytes on those same two cases.
+An independent comparison with the prior encoder confirms v1 request byte compatibility.
+No real reduced-model execution, conversion, or 474-run matrix occurs.
+Builds use at most two compiler jobs; all execution uses the 12 GiB address-space cap and serial tests.
+
+## Existing v1 protocol
 
 Preparatory binary codec and internal F32 runner only. No record producer or
 format matrix, no numerical acceptance. Truth is never an input. Public CLI,

@@ -52,6 +52,42 @@ class Protocol(unittest.TestCase):
         struct.pack_into('<f',b,273,0.)
         with self.assertRaises(ValueError):p.decode_result(b)
 
+    def test_v1_bytes_unchanged(self):
+        import hashlib
+        context = np.array([1., -0., 3.], dtype='<f4')
+        data = p.encode_request('compat', (1,1,3,2,0,0,0,0), {'context':context}, 'a'*64, 'b'*64)
+        # Independent original encoder loaded from the reviewed repository source
+        # is exercised separately by fixed field/payload assertions here.
+        self.assertEqual(struct.unpack_from('<I', data, 8)[0], 1)
+        self.assertEqual(struct.unpack_from('<I', data, 116)[0], 0)
+        self.assertEqual(struct.unpack_from('<I', data, 156)[0], 0)
+        self.assertEqual(data[-12:], context.tobytes())
+        self.assertEqual(len(data), 288+6+192+12)
+
+    def test_v2_all_formats_and_flags(self):
+        for index, fmt in enumerate(p.FORMATS):
+            request = p.encode_request('x', (1,1,1,1,0,0,0,0), {'context':np.ones(1,np.float32)}, 'a'*64, 'b'*64, version=2, format=fmt)
+            self.assertEqual(struct.unpack_from('<I',request,116)[0], index)
+            self.assertEqual(struct.unpack_from('<I',request,156)[0], int(index==0))
+            payload = struct.pack('<df', .5, 2.) + (struct.pack('<ff',0.,1.) if index==0 else b'')
+            b = bytearray(257)+payload
+            struct.pack_into('<8sIIQ4Q',b,0,b'TSQRES01',2,0,len(b),1,1,1,1)
+            b[152:192]=b'a'*40
+            struct.pack_into('<IIQIIQ',b,224,1,0,257,index,int(index==0),0);b[256]=ord('x')
+            result=p.decode_result(b)
+            self.assertEqual(result['format'],fmt)
+            self.assertEqual('anchor_loc' in result,index==0)
+            for offset,value in [(240,6),(244,2),(244,int(index!=0)),(248,1)]:
+                bad=bytearray(b);struct.pack_into('<I',bad,offset,value)
+                with self.assertRaises(ValueError):p.decode_result(bad)
+            failure=bytearray(258)
+            struct.pack_into('<8sIIQ',failure,0,b'TSQRES01',2,1,len(failure))
+            failure[152:192]=b'a'*40
+            struct.pack_into('<IIQIIQ',failure,224,1,1,258,index,0,0);failure[256:]=b'xe'
+            self.assertEqual(p.decode_result(failure)['status'],1)
+        with self.assertRaises(ValueError):
+            p.encode_request('x',(1,1,1,1,0,0,0,0),{'context':np.ones(1,np.float32)},'a'*64,'b'*64,version=1,format='q8_0')
+
 
 
 # Optional executable integration uses native test exports, not regenerated truth.

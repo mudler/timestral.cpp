@@ -1,4 +1,4 @@
-"""Strict tsqbin-v1 codec only; no execution, NPZ writer, pickle, or truth input."""
+"""Strict tsqbin-v1/v2 codec only; no execution, NPZ writer, pickle, or truth input."""
 import hashlib
 import re
 import struct
@@ -10,6 +10,7 @@ REFERENCE = 'a534bdbd244d64f3d9d743f46c7bf6fc330ed4ff'
 NAMES = ('context', 'mask', 'past', 'known', 'cat_past', 'cat_known')
 DTYPES = ('<f4', '|u1', '<f4', '<f4', '<f8', '<f8')
 TYPES = (1, 2, 1, 1, 3, 3)
+FORMATS = ('f32', 'f16', 'q8_0', 'q6_k', 'q5_k', 'q4_k')
 
 
 def require(ok, message):
@@ -27,8 +28,11 @@ def sha(s):
     return bytes.fromhex(s)
 
 
-def encode_request(case_id, shape, arrays, model_sha256, input_sha256):
+def encode_request(case_id, shape, arrays, model_sha256, input_sha256, *, version=1, format='f32'):
     """shape=(B,V,T,H,P,K,CP,CK); arrays contain inference inputs only."""
+    require(type(version) is int and version in (1, 2) and format in FORMATS, 'version/format')
+    require(version != 1 or format == 'f32', 'v1 is F32 only')
+    capture = int(version == 2 and format == 'f32')
     name = identity(case_id)
     require(len(shape) == 8 and all(type(x) is int and 0 <= x < 2**64 for x in shape), 'invalid shape')
     B, V, T, H, P, K, CP, CK = shape
@@ -45,8 +49,8 @@ def encode_request(case_id, shape, arrays, model_sha256, input_sha256):
     total = offset + sum(map(len, payloads))
     require(total <= LIMIT, 'request exceeds limit')
     header = bytearray(288)
-    struct.pack_into('<8sIIQ8Q3QII3d4I', header, 0, b'TSQREQ01', 1, offset, total,
-                     *shape, 32768, 32, 32, 3, 0, 10000., 1e30, 1e-6, 1, 0, len(name), 0)
+    struct.pack_into('<8sIIQ8Q3QII3d4I', header, 0, b'TSQREQ01', version, offset, total,
+                     *shape, 32768, 32, 32, 3, FORMATS.index(format), 10000., 1e30, 1e-6, 1, 0, len(name), capture)
     header[160:192] = sha(model_sha256)
     header[192:224] = hashlib.sha256(HF.encode()).digest()
     header[224:256] = hashlib.sha256(REFERENCE.encode()).digest()
@@ -61,10 +65,17 @@ def encode_request(case_id, shape, arrays, model_sha256, input_sha256):
 def decode_result(data):
     require(256 <= len(data) <= LIMIT, 'result size')
     magic, version, status, total = struct.unpack_from('<8sIIQ', data)
-    require(magic == b'TSQRES01' and version == 1 and status in (0, 1) and total == len(data), 'result header')
+    require(magic == b'TSQRES01' and version in (1, 2) and status in (0, 1) and total == len(data), 'result header')
     B, V, H, Q = struct.unpack_from('<4Q', data, 24)
     nc, nd, offset, reserved1, reserved2 = struct.unpack_from('<IIQQQ', data, 224)
-    require(nc <= 256 and nd <= 4096 and offset == 256+nc+nd and offset <= len(data) and not reserved1 and not reserved2, 'result offsets')
+    require(nc <= 256 and nd <= 4096 and offset == 256+nc+nd and offset <= len(data) and not reserved2, 'result offsets')
+    if version == 1:
+        require(reserved1 == 0, 'v1 reserved fields')
+        fmt, capture = 0, not status
+    else:
+        fmt, flags = struct.unpack_from('<II', data, 240)
+        require(fmt < len(FORMATS) and flags == (int(fmt == 0) if status == 0 else 0), 'result format/anchor flags')
+        capture = bool(flags)
     case = data[256:256+nc].decode('ascii')
     if case:
         identity(case)
@@ -74,15 +85,19 @@ def decode_result(data):
     result = dict(status=status, case_id=case, diagnostic=diagnostic, model_sha256=data[56:88].hex(),
                   executable_sha256=data[88:120].hex(), source_sha256=data[120:152].hex(),
                   runtime_commit=commit, request_sha256=data[192:224].hex())
+    if version == 2:
+        result.update(version=2, format=FORMATS[fmt], anchors_present=capture)
     if status:
         require(not any((B, V, H, Q)) and offset == len(data) and nd > 0, 'failure payload')
         return result
     require(nc > 0 and nd == 0 and min(B, V, H, Q) > 0, 'success shape')
-    counts = (Q, B*V*H*Q, B*V, B*V)
+    counts = (Q, B*V*H*Q, B*V if capture else 0, B*V if capture else 0)
     require(sum(c*s for c, s in zip(counts, (8, 4, 4, 4))) == len(data)-offset, 'result payload count')
     result['shape'] = (B, V, H, Q)
     for key, count, dt, shape in zip(('quantiles', 'values', 'anchor_loc', 'anchor_scale'), counts,
                                     ('<f8', '<f4', '<f4', '<f4'), ((Q,), (B,V,H,Q), (B,V), (B,V))):
+        if count == 0:
+            continue
         a = np.frombuffer(data, dtype=dt, count=count, offset=offset).copy().reshape(shape)
         require(np.isfinite(a).all(), 'nonfinite result')
         if key == 'anchor_scale': require((a > 0).all(), 'invalid scale')
