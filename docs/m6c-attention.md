@@ -24,7 +24,7 @@ No fast-math, reference, tolerance, floor, or baseline changes occur.
 - Frozen old scalar callback versus candidate: **2,464 byte-exact comparisons,
   3,105,024 output values**, with output sentinels intact.
 - Forced scalar fallback: the same exact comparison count passes.
-- Head dimensions 1 through 65 include narrow heads and SIMD tails.
+- Selected head dimensions spanning 1–65 include narrow heads and SIMD tails.
   Sequences include 1, 3, 7, 8, 9, 17, and 33; split boundaries include zero,
   one, halfway, and the full sequence. Two heads and two batch rows execute.
 - Inputs cover random finite values, cancellation, wide value exponents,
@@ -107,3 +107,88 @@ TIMESTRAL_TEST_GGUF="$MODEL" "$BUILD/tests/test_forecast_determinism" --real-512
 Keep the bounded candidate pending root review. Reprofile before another
 optimization; linear cache packing is not authorized by this experiment.
 Full numerical acceptance and full M6c measurements require separate replay.
+
+
+## Post-candidate full-shape profile
+
+This read/profile-only follow-up measures implementation
+`9aa38d10ffd5900681e712110c1f3f07729d0535` after independent bounded review.
+No accepted runtime or test source changes accompany these measurements.
+The previous full M6c latency failure remains the acceptance record.
+
+### Current optimized gprof result
+
+The profiling executable is rebuilt from the current revision in Release mode,
+with `-pg` for C/C++ and linking, `-j2`, and unchanged floating-point flags.
+One isolated forecast runs at context 32768, horizon 1024, one thread,
+zero warmups, and one repeat under the 12 GiB guard.
+It completes in 236.577170 seconds with peak RSS 944091136 bytes.
+The output sum remains `125.490760441`. Executable hash checks pass.
+
+| Symbol | Sampled self seconds | Share |
+|---|---:|---:|
+| `detail::sdpa_f32`, excluding value helper | 105.43 | 49.05% |
+| `linear_columns` | 91.26 | 42.46% |
+| `attention_values` | 11.90 | 5.54% |
+| `_init` | 2.87 | 1.34% |
+
+The remaining SDPA body is slightly larger than linear contraction.
+This profile alone does not separate QK and softmax.
+Sample shares are diagnostic, not exact wall-time attribution.
+
+### Scratch-only phase attribution
+
+A separate scratch copy of `layers.cpp` adds steady-clock timers around QK,
+softmax, and value contraction for each independent query/head job.
+It preserves all arithmetic expressions and output paths.
+Only the scratch object replaces `layers.cpp` when linking the diagnostic CLI;
+accepted runtime files remain unchanged. This build does not use `-pg`.
+The timed callback passes the frozen scalar oracle: 2,464 exact comparisons,
+3,105,024 output values. No acceptance output is substituted or regenerated.
+
+A second isolated cold 32768/1024 forecast completes in 235.382933 seconds,
+with peak RSS 943636480 bytes and the unchanged output sum.
+Summing timers across all 60 SDPA callbacks gives:
+
+| Phase | Timed seconds | Share of timed SDPA phases |
+|---|---:|---:|
+| QK, including dot selection, mask addition, and maximum | 126.677731 | 87.26% |
+| Softmax, including exp, sum, and reciprocal | 6.743052 | 4.64% |
+| Value contraction and reciprocal multiplication | 11.756458 | 8.10% |
+
+QK is the dominant remaining attention phase; softmax is not the first target.
+Clock calls perturb code layout and add overhead. These phase times do not
+combine with gprof samples into a single exact wall-time breakdown.
+Both runs are cold single forecasts, not acceptance medians.
+Neither run measures the six-thread breakdown.
+
+### Evidence and proposed next experiment
+
+Evidence under `timestral-native/m6c-attention/profile-32k`:
+
+| Artifact | Meaning |
+|---|---|
+| `source-commit.txt`, `source-after.txt` | Matching implementation pins around gprof run |
+| `configure.log`, `build.log`, `binary.sha256`, `binary-after.log` | Rebuilt Release profile and hash verification |
+| `native-32k.json`, `native-32k.log`, `native-32k.gprof`, `gmon.out` | Completed current-runtime profile |
+| `layers-timed.cpp`, `layers-timed.o`, `timed-build.log` | Scratch-only phase instrumentation |
+| `timed-oracle.log`, `timed-oracle-phases.log` | Exact oracle verification of scratch callback |
+| `timed-32k.json`, `timed-32k.log`, `phase-summary.json` | Completed phase run and 60-callback totals |
+
+Propose one bounded QK experiment, subject to root approval: AVX2/FMA across
+independent key columns on the existing wide-sequence sequential-FMA branch.
+Each lane must retain ascending head-dimension traversal and the original dot
+FMA chain. Preserve the subsequent scale, mask addition, and maximum ordering.
+Values and key rows are head-dimension-contiguous, so key-column SIMD requires
+strided loads or scratch packing. Start with bounded strided loads; do not
+combine packing or threading changes into the first experiment.
+Keep the small-sequence and narrow split-tail lane-reduction branches unchanged.
+Keep softmax, value contraction, and scalar key tails unchanged.
+
+Require exact old/new attention oracle checks over every execution branch,
+then components, all tiny parity, actual one-/six-thread determinism, warm 512,
+and one matched 32k probe before retaining a candidate.
+Linear contraction remains a second major bottleneck. Even a successful QK
+experiment cannot establish the overall 1.5x gate without full measurements.
+Linear packing requires a separate measured proposal and approval.
+No QK optimization is implemented or authorized by this profile-only report.
