@@ -48,7 +48,7 @@ void check(const Model& m,Fixture& f,Fixture& f64,Fixture& math,const std::strin
  auto norm=f.f(p+"out_norm"),hin=f.f(p+"head.in");std::vector<float> dec;
  for(size_t r=0;r<R;++r)dec.insert(dec.end(),norm.begin()+(r*S+L)*D,norm.begin()+(r+1)*S*D);
  require(dec==hin,"decoder token selection from out_norm");
- compare(f,p+"head.raw",Head(m).project(dec,R,h));
+ Head legacy(m);compare(f,p+"head.raw",detail::head_project_legacy(legacy,dec,R,h));
  auto mq=monotone_quantiles(c,f.f(p+"head.raw")),ref=f.f(p+"head.monotone");
  std::vector<double> mag(ref.size());
  for(size_t i=0;i<ref.size();i+=Q){double z=0;for(size_t j=0;j<Q;++j)z=std::max(z,std::abs(double(ref[i+j])));for(size_t j=0;j<Q;++j)mag[i+j]=z;}

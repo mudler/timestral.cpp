@@ -60,6 +60,12 @@ add_test(NAME test_encoder_negative_layer6_209m COMMAND test_encoder --real --ne
 set_tests_properties(test_encoder_negative_layer6_209m PROPERTIES
   SKIP_RETURN_CODE 77 ENVIRONMENT "TIMESTRAL_TEST_REAL_CASES=uni_short")
 
+ts_add_test(test_head_precision)
+target_compile_definitions(test_head_precision PRIVATE TS_HEAD64_CALLBACK)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+  target_compile_options(test_head_precision PRIVATE -ffp-contract=off)
+endif()
+
 ts_add_test(test_head)
 add_test(NAME test_head_units COMMAND test_head --unit)
 add_test(NAME test_head_209m COMMAND test_head --real)

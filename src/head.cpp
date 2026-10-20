@@ -30,6 +30,16 @@ void head_linear_f32(ggml_tensor* dst,int ith,int nth,void*) {
  auto y=static_cast<float*>(dst->data);const float* b=dst->src[2]?static_cast<const float*>(dst->src[2]->data):nullptr;const size_t K=dst->src[0]->ne[0],N=dst->ne[0];
  for(size_t i=ith;i<size_t(ggml_nelements(dst));i+=nth){float sum=0;for(size_t j=0;j<K;++j)sum=std::fma(w[(i%N)*K+j],x[(i/N)*K+j],sum);y[i]=b?sum+b[i%N]:sum;}
 }
+void head_linear_f64_impl(ggml_tensor* dst,int ith,int nth,void*) {
+ const auto w=static_cast<const float*>(dst->src[0]->data),x=static_cast<const float*>(dst->src[1]->data);
+ auto y=static_cast<float*>(dst->data);const float* bias=dst->src[2]?static_cast<const float*>(dst->src[2]->data):nullptr;
+ const size_t K=dst->src[0]->ne[0],N=dst->ne[0];
+ for(size_t i=ith;i<size_t(ggml_nelements(dst));i+=nth){double sum=0;for(size_t k=0;k<K;++k)sum+=double(w[(i%N)*K+k])*double(x[(i/N)*K+k]);float rounded=float(sum);y[i]=bias?rounded+bias[i%N]:rounded;}
+}
+ggml_tensor* precise_head_linear(ggml_context* ctx,const Model& m,const char* name,ggml_tensor* x){
+ auto w=m.tensor(std::string(name)+".weight");if(w->type!=GGML_TYPE_F32)return reduced_projection(ctx,w,x,nullptr);
+ ggml_tensor* args[]={w,x};return ggml_custom_4d(ctx,GGML_TYPE_F32,w->ne[1],x->ne[1],x->ne[2],1,args,2,head_linear_f64_impl,1,nullptr);
+}
 ggml_tensor* head_linear(ggml_context* ctx,const Model& m,const char* name,ggml_tensor* x,bool bias=false){
  auto reduced=m.tensor(std::string(name)+".weight");
  if(reduced->type!=GGML_TYPE_F32)return reduced_projection(ctx,reduced,x,bias?m.tensor(std::string(name)+".bias"):nullptr);
@@ -65,15 +75,19 @@ std::vector<float> monotone_quantiles(const Config& c, const std::vector<float>&
  }
  return out;
 }
-std::vector<float> Head::project(const std::vector<float>& decoder,size_t rows,size_t patches) {
+std::vector<float> Head::project_impl(const std::vector<float>& decoder,size_t rows,size_t patches,bool legacy) {
  size_t D=model_.config().d_model;
  if(!rows||!patches||rows>std::numeric_limits<size_t>::max()/patches/D||decoder.size()!=rows*patches*D)throw Error("invalid head input dimensions");
  auto ctx=runner_.begin();auto x=ggml_new_tensor_3d(ctx,GGML_TYPE_F32,D,patches,rows);ggml_set_input(x);
- auto hidden=head_linear(ctx,model_,"head.hidden",x);
- auto out=head_linear(ctx,model_,"head.out",head_silu(ctx,hidden));
- auto residual=head_linear(ctx,model_,"head.res",x);
+ auto hidden=legacy?head_linear(ctx,model_,"head.hidden",x):precise_head_linear(ctx,model_,"head.hidden",x);
+ auto activated=head_silu(ctx,hidden);
+ auto out=legacy?head_linear(ctx,model_,"head.out",activated):precise_head_linear(ctx,model_,"head.out",activated);
+ auto residual=legacy?head_linear(ctx,model_,"head.res",x):precise_head_linear(ctx,model_,"head.res",x);
  auto y=ggml_add(ctx,out,residual);runner_.allocate({y});runner_.upload(x,decoder);runner_.compute();return runner_.read(y);
-}
+ }
+std::vector<float> Head::project(const std::vector<float>& x,size_t rows,size_t patches){return project_impl(x,rows,patches,false);}
+std::vector<float> detail::head_project_legacy(Head& h,const std::vector<float>& x,size_t rows,size_t patches){return h.project_impl(x,rows,patches,true);}
+void detail::head_linear_f64(ggml_tensor* dst,int ith,int nth,void* data){head_linear_f64_impl(dst,ith,nth,data);}
 }
 namespace ts {
 std::vector<float> context_patch_projection(const Model& m,const std::vector<float>& features,size_t R,size_t L) {
