@@ -179,3 +179,82 @@ A separately approved producer must verify fixture associations, actual hashes,
 and successful F32 anchors before writing records. Reduced formats and expected-
 error classification remain unimplemented. M6c, the 5M prerequisite, full M7
 quality evaluation, and complete milestone acceptance remain pending.
+
+## Approved F32-only development producer contract
+
+`record_quant.py` produces **development-f32-record-v1**, explicitly non-scoring.
+It never emits a quant-record-v1 manifest, six-format placeholders, or numerical
+PASS. A run selects frozen case IDs, serializes inference arrays from unchanged
+quant_fixtures, and sends no truth to the accepted native driver. A model-free
+inventory validates all79 IDs and serialization without running inference.
+
+Each selected item has its own NPZ, request, and strict JSON audit, plus a run
+index. NPZ contains context, truth, quantile levels, final F32 values, anchor_loc,
+anchor_scale and supplied covariate arrays. Load with allow_pickle=False.
+Audit records canonical case/input/truth hashes, actual request/model/executable
+hashes, asserted runtime/source identity, frozen options, shape and array hashes.
+Response case/request/model/executable/source/commit identities must all match;
+options are fixed by tsqbin-v1 and validated against freshly decoded fixture
+shape/levels. Anchors must be finite F32 [B,V] with positive scales. The trusted
+native capture remains the anchor source; Python cannot prove arbitrary plausible
+anchor bytes came from execution merely by validating their shape and hashes.
+
+Refuse existing outputs, symlinks, path aliases, unsafe item IDs, unknown response
+fields, and nonfinite forecasts/truth/anchors. Validate all response data before
+publishing NPZ/audit via exclusive same-directory temporaries with no overwrite.
+No partial files masquerade as completed items: run index publishes last, and
+errors leave no successful item entry. Existing outputs are never overwritten.
+Model/executable hashes are independently checked before and after each process.
+All driver errors remain development HOLD diagnostics, never expected passes.
+Unit tests use small mocked fixtures/processes; verified real artifacts may be
+consumed without launching inference. No heavy execution is authorized yet.
+
+### Producer implementation and model-free verification
+
+The producer implements the approved development-only contract. `--inventory`
+constructs every frozen fixture and serializes all **79 identities**, totaling
+**938712 request bytes**. It executes no model and stores no truth in requests.
+Execution requires explicit case selection, actual driver/model files, runtime
+commit, source snapshot hash, and a new output directory. Only F32 is invoked.
+Run index publication occurs last; failure leaves no completed run index.
+A previously completed item audit may survive a later item failure, but is not
+a completed run or scoring manifest. Existing files are never replaced.
+
+`tests/python/test_record_quant.py` passes **9/9** with mocked processes and
+small fixtures. Coverage includes pickle-free NPZ roundtrip, exact input bytes,
+identity mismatches, process failure, model/executable/request mutation,
+nonfinite truth/forecasts/anchors, invalid anchor shape/scale, symlink/alias
+rejection, overwrite refusal, and cleanup on injected publication failure.
+Nine tests are grouped cases, not nine model executions.
+
+Two already verified real native response artifacts (uni_short/known_cov) pass
+producer response/hash/shape/anchor validation without launching another process.
+Those old requests use the native test case ID, not canonical producer fixture
+identities. Therefore this is response-consumption evidence only, **not** a claim
+that the complete producer has executed real canonical cases. An actual two-case
+producer run still requires a separately granted inference slot.
+
+Finite but incorrect anchor values cannot be independently detected by Python
+without a trusted native result oracle; the producer validates their type,
+shape, finiteness, positive scale, request/model association, and response hashes.
+The native driver's previously verified actual capture is the provenance basis.
+No fabricated expected anchor values or quantized anchors are substituted.
+
+Use the existing NumPy environment:
+
+```sh
+python scripts/record_quant.py --inventory
+python scripts/record_quant.py --driver "$DRIVER" --model "$F32_MODEL" \
+  --runtime-commit "$RUNTIME_COMMIT" --source-sha256 "$SOURCE_HASH" \
+  --case uni_short --case known_cov --output "$NEW_OUTPUT_DIRECTORY"
+```
+
+The second command is documented, not executed in this slice. No native build,
+inference, model conversion, quant-record-v1 manifest, or quality PASS runs.
+All checks use the 12 GiB guard and single-threaded numerical Python settings.
+Evidence under `timestral-native/m7-producer`: `verified-unit.log`,
+`verified-inventory.json`, `archived-real.log`, and source/test pin records.
+The native driver, protocol, metric/fixture modules, public CLI/C ABI, and
+inference code remain unchanged. Performance and full quantization acceptance
+remain pending. Publication uses same-directory hard-link/no-overwrite semantics;
+adversarial filesystem races and power-loss directory durability are not proven.
