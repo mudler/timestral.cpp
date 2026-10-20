@@ -5,7 +5,7 @@ Each result rounds once to F32. Products/additions remain separate under `-ffp-c
 This is an arithmetic-contract change, not a bitwise optimization or universal backend match.
 All model shapes use the same formula without reference-selected branches.
 
-Internal policies remain distinct: frozen legacy F32, mixed binary64-QK/F32-rest SIMD, mixed scalar fallback, and production coherent binary64.
+Internal policies remain distinct: frozen legacy F32, mixed binary64-QK/F32-rest SIMD, mixed scalar fallback, and candidate production-route coherent binary64.
 Candidate legacy and mixed oracles retain their arithmetic expectations through explicit internal callback names.
 The new coherent test first fails on the actual production graph route against the previous accepted library.
 It then checks production graph routing, an exact scalar policy oracle, independently materialized long-double pairwise accuracy, analytic cases, guards, byte immutability, and actual concurrent partitions 1/2/3/6.
@@ -30,6 +30,7 @@ Case identity follows manifest order: uni_short and uni_one_patch complete both 
 The layer3 local `floor_tf` comparison passes (error4.303e-6, tolerance1.147e-5).
 The following free-running comparison fails (error7.171e-6, tolerance7.121e-6, floor3.560e-6; approximate displayed ratio1.007).
 The raw partial log contains 75 passing comparisons and one failing comparison; no complete 13-case summary is invented.
+Tiny 28-case determinism passes before the M3 failure; no later real determinism is claimed.
 No 5M M6b, supplemental 209M M3, bounded 209M forecast, or later determinism command runs after failure.
 The partial result is not a full-profile pass.
 
