@@ -14,6 +14,9 @@ template<class T> std::vector<T> slice(const std::vector<T>& x,size_t rows,size_
 }
 }
 std::vector<float> Forecaster::decode(const AssembledRows& a,size_t H,size_t cap,size_t shot,std::vector<DecodeBlock>* trace,const DecodeProgress& progress){
+ return decode_impl(a,H,cap,shot,trace,progress,nullptr);
+}
+std::vector<float> Forecaster::decode_impl(const AssembledRows& a,size_t H,size_t cap,size_t shot,std::vector<DecodeBlock>* trace,const DecodeProgress& progress,ForecastAnchors* anchors){
  const auto& c=model_.config();size_t ps=c.patch_size,Q=c.num_quantiles(),R=a.rows_count,T=a.length;
  cap=cap?cap:c.context_length;shot=shot?shot:c.per_shot_horizon_patches;shot=std::min(shot,size_t(c.block_size));
  if(!H||!R||!T||T%ps||!shot||!cap||cap>c.context_length||H>SIZE_MAX-(ps-1))throw Error("invalid decode dimensions");
@@ -29,6 +32,17 @@ std::vector<float> Forecaster::decode(const AssembledRows& a,size_t H,size_t cap
   auto future=slice(a.future,R,full,offset,n);auto fm=slice(a.future_mask,R,full,offset,n);
   if(progress)progress(offset,block,T);
   auto pred=predictor_.predict(context,mask,R,T,block,a.groups,a.roles,future,fm);
+  if(anchors && offset==0) {
+   if(!anchors->batch || !anchors->targets || R%anchors->batch || R/anchors->batch<anchors->targets || pred.loc.size()!=R || pred.scale.size()!=R)throw Error("initial anchor shape mismatch");
+   size_t all=R/anchors->batch,count=product(anchors->batch,anchors->targets);
+   anchors->loc.resize(count);anchors->scale.resize(count);
+   for(size_t b=0;b<anchors->batch;++b)for(size_t v=0;v<anchors->targets;++v) {
+    size_t from=b*all+v,to=b*anchors->targets+v;
+    float loc=pred.loc[from],scale=pred.scale[from];
+    if(!std::isfinite(loc)||!std::isfinite(scale)||scale<=0)throw Error("invalid initial anchor");
+    anchors->loc[to]=loc;anchors->scale[to]=scale;
+   }
+  }
   auto q=refine_block(c,pred.output,context,mask,R,T,block,targets);
   if(trace)trace->push_back({offset,block,T,context,future,pred.output,q,mask,fm});
   size_t used=std::min(n,H-offset);for(size_t r=0;r<R;++r)std::copy_n(q.begin()+r*n*Q,used*Q,output.begin()+(r*H+offset)*Q);
@@ -51,9 +65,9 @@ std::vector<float> Forecaster::decode(const AssembledRows& a,size_t H,size_t cap
  }
  return output;
 }
-std::vector<float> Forecaster::raw(const AssembledRows& a,const ForecastRequest& r,std::vector<DecodeBlock>* trace,const DecodeProgress& progress){
+std::vector<float> Forecaster::raw(const AssembledRows& a,const ForecastRequest& r,std::vector<DecodeBlock>* trace,const DecodeProgress& progress,ForecastAnchors* anchors){
  const auto& c=model_.config();size_t Q=c.num_quantiles(),all=a.rows_count/r.batch;
- auto decoded=decode(a,r.horizon,r.max_context,r.per_shot_horizon_patches,trace,progress);
+ auto decoded=decode_impl(a,r.horizon,r.max_context,r.per_shot_horizon_patches,trace,progress,anchors);
  std::vector<float> out(product(product(product(r.batch,r.targets),r.horizon),Q));
  double cap=r.quantile_real_cap_k.value_or(c.quantile_real_cap_k);
  if(!std::isfinite(cap))throw Error("invalid quantile cap");
@@ -71,21 +85,25 @@ std::vector<float> Forecaster::raw(const AssembledRows& a,const ForecastRequest&
  return out;
 }
 Forecast Forecaster::forecast(const ForecastRequest& r,ForecastTrace* trace){
+ if(trace){trace->initial_anchors.reset();trace->positive.clear();trace->negative.clear();}
+ std::optional<ForecastAnchors> anchors;
+ if(trace && trace->capture_initial_anchors)anchors=ForecastAnchors{r.batch,r.targets,{},{}};
  const auto& c=model_.config();
  auto a=assemble_rows(c,r.context,r.observation_mask,r.batch,r.targets,r.length,r.horizon,r.past,r.past_count,r.known,r.known_count,r.max_context,r.categorical_past,r.categorical_past_count,r.categorical_known,r.categorical_known_count);
- if(trace){trace->positive.clear();trace->negative.clear();}
- auto out=raw(a,r,trace?&trace->positive:nullptr,trace?trace->before_block:DecodeProgress{});
+ auto out=raw(a,r,trace && trace->capture_blocks?&trace->positive:nullptr,trace?trace->before_block:DecodeProgress{},anchors?&*anchors:nullptr);
  size_t Q=c.num_quantiles();
  if(r.symmetric_averaging.value_or(c.symmetric_averaging)){
   for(size_t i=0;i<Q;++i)if(std::abs(c.quantile_knots[i]+c.quantile_knots[Q-1-i]-1)>=1e-9)throw Error("symmetric averaging needs quantile levels symmetric about 0.5");
   for(auto& x:a.rows)x=-x;for(auto& x:a.future)x=-x;
-  auto mirrored=raw(a,r,trace?&trace->negative:nullptr,trace?trace->before_block:DecodeProgress{});
+  auto mirrored=raw(a,r,trace && trace->capture_blocks?&trace->negative:nullptr,trace?trace->before_block:DecodeProgress{});
   for(size_t i=0;i<out.size();++i)out[i]=0.5f*(out[i]+(-mirrored[(i/Q)*Q+Q-1-i%Q]));
  }
  if(r.clip_nonnegative.value_or(c.clip_nonnegative))for(size_t row=0;row<r.batch*r.targets;++row){bool any=false,eligible=true;
   for(size_t t=0;t<r.length;++t){size_t i=row*r.length+t;bool observed=std::isfinite(r.context[i])&&(r.observation_mask.empty()||r.observation_mask[i]);if(observed){any=true;eligible&=r.context[i]>=0;}}
   if(any&&eligible)for(size_t i=row*r.horizon*Q;i<(row+1)*r.horizon*Q;++i)out[i]=std::max(out[i],0.f);
  }
- return {r.batch,r.targets,r.horizon,c.quantile_knots,std::move(out)};
+ Forecast result{r.batch,r.targets,r.horizon,c.quantile_knots,std::move(out)};
+ if(trace && anchors)trace->initial_anchors=std::move(anchors);
+ return result;
 }
 }

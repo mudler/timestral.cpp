@@ -27,10 +27,17 @@ struct DecodeBlock {
  std::vector<int8_t> mask, future_mask;
 };
 using DecodeProgress = std::function<void(size_t offset, size_t patches, size_t context_length)>;
+struct ForecastAnchors {
+ size_t batch=0,targets=0;
+ std::vector<float> loc,scale; // owned [B,V], first positive native prediction
+};
 struct ForecastTrace {
  std::vector<DecodeBlock> positive, negative;
  // Optional observer called immediately before each heavy prediction; no tensor ownership.
  DecodeProgress before_block;
+ bool capture_initial_anchors=false;
+ bool capture_blocks=true;
+ std::optional<ForecastAnchors> initial_anchors;
 };
 class Forecaster {
 public:
@@ -41,8 +48,10 @@ public:
                           size_t per_shot=0,std::vector<DecodeBlock>* trace=nullptr,
                           const DecodeProgress& progress={});
 private:
+ std::vector<float> decode_impl(const AssembledRows&,size_t,size_t,size_t,
+     std::vector<DecodeBlock>*,const DecodeProgress&,ForecastAnchors*);
  const Model& model_;
  PredictBlock predictor_;
- std::vector<float> raw(const AssembledRows&,const ForecastRequest&,std::vector<DecodeBlock>*,const DecodeProgress&);
+ std::vector<float> raw(const AssembledRows&,const ForecastRequest&,std::vector<DecodeBlock>*,const DecodeProgress&,ForecastAnchors* = nullptr);
 };
 }

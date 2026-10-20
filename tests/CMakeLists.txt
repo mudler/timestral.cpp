@@ -115,3 +115,8 @@ if(TIMESTRAL_SHARED AND TIMESTRAL_BUILD_CLI)
       --scratch ${CMAKE_CURRENT_BINARY_DIR}/cli-fixtures)
   endif()
 endif()
+
+
+ts_add_test(test_forecast_anchors)
+add_test(NAME test_forecast_anchors_209m COMMAND test_forecast_anchors --real)
+set_tests_properties(test_forecast_anchors_209m PROPERTIES SKIP_RETURN_CODE 77)
