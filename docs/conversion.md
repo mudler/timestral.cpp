@@ -65,7 +65,27 @@ The [pinned configuration](https://huggingface.co/mistralai/Timestral-5M/blob/bd
 has `d_model 192`, three heads, `mlp_hidden_dim 512`, and eight layers.
 Its schedule repeats `time, time, time, time_variate` twice.
 The M7 fixture profile in `docs/PLAN.md` preserves the canonical inputs and records all eight layers.
-This pin records metadata, not a completed conversion or parity gate.
+Local preparation retrieves only `config.json`, `model.safetensors`, and `LICENSE` at that exact revision.
+A metadata-only inventory finds 75 F32 tensors and 5,208,960 parameters; names, shapes, byte ranges, and file length match the config-driven schema.
+No model instantiation, conversion, reference generation, or parity gate accompanies this preparation.
+
+| File | Bytes | Actual SHA-256 |
+|---|---:|---|
+| `config.json` | 904 | `b5f27f61513f8fd1a3aa996f3720d3679cb40bce5bcb08eb3dc320ce726e7c2f` |
+| `model.safetensors` | 20,843,960 | `7ace108c4987e7f2a99a75a445240019d1d31c2117139d1bd05ffdfd25aca738` |
+| `LICENSE` | 1,695 | `648194727930df730890e9f9affdbcc5c930d406d6829559b25ca3d5a973fc8c` |
+
+The scratch profile contains exactly the 13 non-slow cases, with only `layers` changed to `all`.
+A deep comparison preserves every other case field; the canonical specification remains unchanged.
+The prepared environment records Python 3.12, NumPy 2.5.4, torch 2.14.1+cpu, safetensors 0.8.0, and gguf 0.19.0.
+Installed reference-package provenance identifies `a534bdbd244d64f3d9d743f46c7bf6fc330ed4ff`.
+
+Later execution requires a separate heavy-slot grant and a pinned source/build snapshot.
+Start with F32 conversion and the `uni_one_patch` pilot in all five modes, serially under 12 GiB.
+Validate its artifacts, compute floors, and run strict M3/M6b before estimating the remaining profile's cost.
+Use the Hub ID plus exact revision with the prepared offline cache to preserve provenance.
+Keep partial/subset diagnostics visible; an external audit must establish full 13-case coverage.
+Local task authorization does not establish revenue eligibility or publication rights; the owner remains responsible for those licence conditions.
 
 The [pinned licence](https://huggingface.co/mistralai/Timestral-5M/blob/bdd20cfc15a3fea0e4cb5ccef37f8d3ca7aa335f/LICENSE)
 is titled "Modified MIT License", with attribution "2026 - Mistral AI".
