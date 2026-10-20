@@ -255,6 +255,33 @@ static int64_t attention_values(const float* p,const float* v,float* out,
     return d;
 }
 #endif
+#ifdef TS_LINEAR_AVX2
+// Four independent key dots. No horizontal reduction or fused multiply/add.
+__attribute__((target("avx2")))
+static int64_t qk64_keys4(const float* q,const float* k,float* dots,
+                         int64_t keys,int64_t stride,int64_t hd,double* accumulators) {
+    int64_t key=0;
+    for(;key+4<=keys;key+=4){
+        __m256d accumulator=_mm256_setzero_pd();
+        for(int64_t d=0;d<hd;++d){
+            const float* p=k+key*stride+d;
+            __m128 values=_mm_set_ps(p[3*stride],p[2*stride],p[stride],p[0]);
+            __m256d product=_mm256_mul_pd(_mm256_set1_pd(double(q[d])),_mm256_cvtps_pd(values));
+            accumulator=_mm256_add_pd(accumulator,product);
+        }
+        if(accumulators)_mm256_storeu_pd(accumulators+key,accumulator);
+        _mm_storeu_ps(dots+key,_mm256_cvtpd_ps(accumulator));
+    }
+    return key;
+}
+#endif
+void detail::qk64_dots(const float* q,const float* k,float* out,int64_t keys,int64_t stride,int64_t hd,bool force_scalar,double* accumulators) {
+    int64_t first=0;
+#ifdef TS_LINEAR_AVX2
+    if(!force_scalar && __builtin_cpu_supports("avx2"))first=qk64_keys4(q,k,out,keys,stride,hd,accumulators);
+#endif
+    for(int64_t j=first;j<keys;++j){double sum=0;for(int64_t d=0;d<hd;++d)sum+=double(q[d])*double(k[j*stride+d]);if(accumulators)accumulators[j]=sum;out[j]=float(sum);}
+}
 bool detail::keypack_bytes(size_t heads,size_t sequence,size_t dim,size_t budget,size_t& bytes) {
     size_t count=sequence/8;
     for(size_t factor:{dim,size_t(8),heads,sizeof(float)}) {
@@ -265,7 +292,7 @@ bool detail::keypack_bytes(size_t heads,size_t sequence,size_t dim,size_t budget
     bytes=count;return true;
 }
 // CPU flash operation boundaries, evaluated without a dependency on Torch.
-static void sdpa_impl(ggml_tensor* dst,int ith,int nth,void* split_data,detail::KeyPackProbe* probe,bool legacy) {
+static void sdpa_impl(ggml_tensor* dst,int ith,int nth,void* split_data,detail::KeyPackProbe* probe,bool legacy,bool force_scalar=false) {
     const int64_t split=reinterpret_cast<uintptr_t>(split_data);
     auto q=dst->src[0],k=dst->src[1],v=dst->src[2],mask=dst->src[3];
     auto Q=(const float*)q->data,K=(const float*)k->data,V=(const float*)v->data,M=(const float*)mask->data;
@@ -326,6 +353,7 @@ static void sdpa_impl(ggml_tensor* dst,int ith,int nth,void* split_data,detail::
                 ?attention_packed_keys(Q+(r*S+t)*D+h*hd,packed.get()+h*(S/8)*hd*8,logits.data(),keys,hd)
                 :attention_keys(Q+(r*S+t)*D+h*hd,K+r*S*D+h*hd,logits.data(),keys,D,hd);
 #endif
+        if(!legacy){detail::qk64_dots(Q+(r*S+t)*D+h*hd,K+r*S*D+h*hd,logits.data(),keys,D,hd,force_scalar);first_key=keys;}
         // Consume SIMD dots in the original scalar key order for scale/mask/max.
         for(int64_t j=0;j<first_key;++j) {
             logits[j]=logits[j]*float(1/std::sqrt(double(hd)))+M[(r*S+t)*S+j];
@@ -360,6 +388,9 @@ static void sdpa_impl(ggml_tensor* dst,int ith,int nth,void* split_data,detail::
 }
 void detail::sdpa_f32(ggml_tensor* dst,int ith,int nth,void* split_data) {
     sdpa_impl(dst,ith,nth,split_data,nullptr,false);
+}
+void detail::sdpa_f32_scalar(ggml_tensor* dst,int ith,int nth,void* split_data) {
+    sdpa_impl(dst,ith,nth,split_data,nullptr,false,true);
 }
 void detail::sdpa_f32_legacy(ggml_tensor* dst,int ith,int nth,void* split_data) {
     sdpa_impl(dst,ith,nth,split_data,nullptr,true);

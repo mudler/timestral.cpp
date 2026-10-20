@@ -26,6 +26,9 @@ void linear_f32(ggml_tensor*,int,int,void*);
 void sdpa_f32(ggml_tensor*,int,int,void*);
 // Internal frozen F32 arithmetic seam for legacy compatibility tests only.
 void sdpa_f32_legacy(ggml_tensor*,int,int,void*);
+// Internal exact-policy scalar dispatch and direct-dot seams.
+void sdpa_f32_scalar(ggml_tensor*,int,int,void*);
+void qk64_dots(const float*,const float*,float*,int64_t,int64_t,int64_t,bool force_scalar=false,double* accumulators=nullptr);
 }
 
 namespace ts::detail {
