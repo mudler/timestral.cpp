@@ -169,3 +169,31 @@ Evidence under `timestral-native/m6c-keypack/test-followup`:
 `build.log`, `fallback-link.log`, `oracle.log`, `oracle-fallback.log`,
 `negative-missing-scalar-expectation.log`, `host.log`, `source-base.tar`,
 `source.patch`, `before.sha256`, `after.log`, and the two archived test binaries.
+
+## Retention-window screening: blocked
+
+The benchmark-only follow-up monitors the host for the approved ten-minute
+maximum, from 07:30:13 to 07:40:13 UTC on 20 October 2026.
+It records **31 read-only snapshots**, approximately 20 seconds apart.
+Eligibility requires both CPU pressure avg10 below 10% and load1 below 12,
+for three consecutive samples. These resource-screening thresholds do not
+change numerical tolerances or the M6c performance gate.
+
+Only sample 19 qualifies: load1 **11.17**, pressure avg10 **8.79%**.
+The longest eligible streak is **one**, not three.
+Across the window, load1 ranges **10.83–21.10** and pressure avg10 ranges
+**6.16–26.86%**. The last snapshot has load1 **12.72** and pressure **6.16%**,
+still failing the load condition. No qualifying window occurs before timeout.
+
+**No retention benchmark launches. Performance remains UNDECIDED.**
+No builds, runtime changes, unrelated process termination, or configuration
+changes occur. Source/binary benchmark pins are not created because execution
+never passes screening; prior correctness pins remain the applicable evidence.
+No samples are selected retrospectively to relax the three-snapshot condition.
+
+Evidence under `timestral-native/m6c-keypack/retention`:
+`screening.jsonl`, `host-00.log` through `host-30.log`, and `blocked.txt`.
+Each host record includes load, CPU pressure, cgroup quota/counters, and process
+CPU snapshots. The screening job exits zero after completing its bounded wait;
+that exit status indicates monitoring completion, not benchmark acceptance.
+Root owns authorization of any later measurement window or next scope.
