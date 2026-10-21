@@ -19,7 +19,7 @@ Forecast requires out_q and sets it to zero first when nonnull. Validate signed
 dimensions/counts, flags, mask bytes, pointer/count consistency, all shape and
 byte products, and vector limits before reading caller buffers. Positive counts
 require pointers; zero counts reject nonnull pointers. NaN missingness and
-native defaults remain unchanged. Caller allocations must hold the implied
+native defaults remain unchanged. Caller allocations must cover the implied
 sizes because this ABI has no buffer-length fields.
 
 Output is malloc-owned F32 [B,V,H,Q], checked finite and freed only with
@@ -29,15 +29,15 @@ A private helper tests nonfinite output rejection without public ABI symbols.
 Keep existing C++ exports. Shared builds statically embed PIC ggml. Require the
 exact eight unmangled C API symbols, dlsym resolution, C99 header compilation
 and layout agreement, tiny/error checks, and actual real uni_short/known_cov
-bitwise comparisons against Forecaster. Shared/static builds use -j2 under
-12 GiB. Missing real artifacts are skips, never acceptance passes.
+bitwise comparisons against Forecaster. Shared/static builds use -j2 under a
+memory limit. Missing real artifacts are skips, never acceptance passes.
 No CLI, kernel, reference, tolerance, model, or licence change is included.
 
 ## Implemented contract and usage
 
 The eight functions are `abi_version`, `load`, `free`, `last_error`,
 `num_quantiles`, `quantile_level`, `forecast`, and `free_buffer`, each prefixed
-with `timestral_capi_`. Version 1 preserves the PLAN request field order.
+with `timestral_capi_`. Version 1 keeps the request field order.
 
 Initialize every request field. Zero-initialization disables symmetric averaging
 and clipping; explicitly assign -1 to both fields to request model defaults.
@@ -58,7 +58,7 @@ r.prediction_length = horizon;
 r.symmetric_averaging = -1; r.clip_nonnegative = -1;
 int32_t q = 0;
 float* output = timestral_capi_forecast(ctx, &r, &q);
-/* On failure inspect timestral_capi_last_error(ctx). On success output holds
+/* On failure inspect timestral_capi_last_error(ctx). On success output contains
    B*V*horizon*q floats. It remains owned by the caller across further calls. */
 timestral_capi_free_buffer(output);
 timestral_capi_free(ctx);
@@ -74,7 +74,7 @@ thread-count setting in the calling thread.
 ## Transport checks
 
 Static and shared Release builds pass the following bounded checks, CPU-only,
-serial under 12 GiB, using `-j2` compilation:
+serial under a memory limit, using `-j2` compilation:
 
 | Build | Tiny/error/layout checks | Tiny transport comparisons | Real checks | Real transport comparisons |
 |---|---:|---:|---:|---:|

@@ -50,7 +50,7 @@ geometry, and quantile levels in readable text or --json, never tensor weights.
 Verify strict parsing, missing values, batches, numeric/categorical covariates,
 CSV/JSON float roundtrips, tiny and real uni_short/known_cov byte equivalence
 against C ABI, and unchanged bench contract on a tiny bounded workload.
-Builds/tests run serially under 12 GiB with -j2. Pin tested source/binaries
+Builds/tests run serially under a memory limit with -j2. Pin tested source/binaries
 before/after; no full 32k performance or real aggregate parity replay.
 
 ## Commands
@@ -107,10 +107,10 @@ inference; it is not a parser-only test. Real transport is a separate direct
 run using the gguf-capable Python environment, not part of that CTest count.
 Python is a test dependency only; the CLI requires no Python at inference.
 
-Builds and tests execute serially under 12 GiB with -j2 compilation.
+Builds and tests execute serially under a memory limit with -j2 compilation.
 No kernel, Forecaster, C ABI, model, baseline, or numerical tolerance changes
-accompany this transport. M6c performance/keypack retention and M7 quantization
-acceptance remain pending; this is not full M8 acceptance.
+accompany this transport. Formal performance measurement and quantization
+acceptance remain pending; this does not complete the CLI acceptance.
 
 ## Reproduction and evidence
 

@@ -31,7 +31,7 @@ The WQL values are already percentages, not fractional values to multiply again.
 Q8 therefore fails the mean-deviation bound, **not** the WQL bound.
 K formats have no separate loss bound in this contract; their measured means
 satisfy the strict F32<F16<Q8_0<Q6_K<Q5_K<Q4_K ordering.
-This does not turn the failed six-format milestone into a pass.
+This does not turn the failed six-format evaluation into a pass.
 
 Full aggregate MASE remains undefined because `all_missing` has no observed
 adjacent pairs. The report retains that limitation rather than filtering it out.
@@ -46,12 +46,12 @@ No retry, tuning, replacement anchors, reference rewrite, or gate relaxation fol
 
 Before/after checks preserve2361 source/checkpoint/SDK files, eight tools,
 six coherent models, and13744 reference/environment/dependency files.
-The root-bound envelope and admitted closing record also recheck the approved
+The envelope and admitted closing record also recheck the approved
 source/helper/admission/status/mapping evidence and all15 representative mapped DSOs.
 Those DSO identities come from the reviewed12-call pilot;20ms sampling is not
 an exhaustive proof of every transient load in all474 processes.
 
-The run is serial N1 under a hard12GiB virtual-memory ceiling with bytecode writes disabled.
+The run is serial N1 under a hard virtual-memory limit with bytecode writes disabled.
 The producer time wrapper records52:04.61 wall time and maximum RSS948292KiB.
 These are execution resource observations, not formal performance acceptance.
 
@@ -66,5 +66,5 @@ This result applies to the209M coherent cohort and this exact ON profile.
 It does not establish quality for5M,28M,123M, another backend, or another SDK.
 F32 trained parity remains separately documented; it does not imply Q8 quality.
 Any model card or publication must disclose this failed Q8 mean-error gate.
-Do not advertise full M7 quality acceptance or infer redistribution permission.
+Do not advertise full quality acceptance or infer redistribution permission.
 Further diagnosis or implementation requires a separate decision.

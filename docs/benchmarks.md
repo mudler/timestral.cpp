@@ -1,4 +1,4 @@
-# CPU benchmarks (M6c)
+# CPU benchmarks
 
 ## Current standalone result: latency fails, memory passes
 
@@ -7,20 +7,18 @@ The qualified standalone-ON runtime `68a5a53` records formal medians
 Both exceed the unchanged 1.5× limits; both RSS measurements pass.
 See [the complete formal result](#qualified-standalone-on-68a5a53-measured-latency-failure)
 for raw samples, resource qualifications, and source identities.
-The [public-source profile](m6c-on-public-profile.md) is diagnostic attribution,
+A profile built from public sources is diagnostic attribution,
 not an additional formal performance pass.
 
-The isolated [two-row wide-linear candidate](m6c-row2-col16.md#separately-authorized-contended-full-shape-correctness-pair)
+An isolated two-row wide-linear candidate
 passes a full-shape byte comparison. Its performance remains **UNDECIDED**;
 it is not adopted. Numerical identity under contention does not establish speed.
 
 ## Historical optimized-native result at b03d674
 
 The optimized runtime at `b03d674953008e7c557f4148892656eba171e700`
-passes full real M6b numerical parity, but fails the full M6c latency gate.
+passes full real-model numerical parity, but fails the full latency gate.
 The initial measurements below remain historical evidence, not current status.
-See [full-shape validation and profile](m6c-linear.md#full-shape-validation-and-profile)
-for the accepted numerical replay, profile method, and next proposed experiment.
 
 | Implementation | Context / horizon | Threads | Warmup / repeats | Median seconds | Peak RSS bytes |
 |---|---:|---:|---:|---:|---:|
@@ -33,10 +31,7 @@ Native/reference latency ratios are **22.95x** and **17.98x**.
 The corresponding 1.5x limits are 21.568716 and 6.665886 seconds: both fail.
 Both native RSS measurements pass reference RSS plus 1 GB.
 These processes use matching inputs, one warmup, and five samples, under the
-measurement contract below. Native raw samples reside in
-`timestral-native/m6c-opt/native-32k-{1,6}.json` under the work directory.
-The reference samples remain in `timestral-native/m6c/reference-isolated-{1,6}.json`.
-Input sums match at `-8.5625`. Native output sum is `125.490760441`;
+measurement contract below. Input sums match at `-8.5625`. Native output sum is `125.490760441`;
 the reference sum is `125.490904057544`. Sums do not replace parity gates.
 
 A historical rebuilt optimized Release profile identifies `sdpa_f32` as the dominant
@@ -95,14 +90,14 @@ Output checksums diagnose gross mistakes; they are not a numerical parity test.
 
 `--warmup 0 --repeat 1` is useful for a bounded cold estimate, but is not an
 acceptance measurement. Use a process timeout and the deployment's memory limit
-when estimating expensive native runs. Initial runs used a 12 GiB address-space
-limit for both implementations.
+when estimating expensive native runs. Initial runs used an address-space memory limit
+for both implementations.
 
 ## Initial measurements (historical, before optimization)
 
 CPU: AMD Ryzen 5 7430U with Radeon Graphics, six physical cores and twelve
 logical CPUs. Reference: PyTorch `2.14.1+cpu`, pinned source/model revisions
-above. Native: Release build of the accepted M6b runtime, without optimizations.
+above. Native: Release build of the accepted runtime, without optimizations.
 The full reference rows below were measured without an overlapping build, in
 separate processes, with 20 seconds between configurations.
 
@@ -124,12 +119,12 @@ Full-shape reference samples (seconds):
 Both full reference runs have input sum `-8.5625` and output sum
 `125.490904057544`. At 512/32 both tools have input sum `-3.234375`;
 native/reference output sums are `99.59357074` / `99.593632422388`.
-Tiny inputs also match (`-0.515625`). The preserved M6b evidence remains the
+Tiny inputs also match (`-0.515625`). The preserved full-model evidence remains the
 numerical acceptance record; these sums do not replace it.
 
 ### Initial gate status: incomplete, likely latency failure
 
-The M6c gate requires native 32768/1024 medians at most 1.5 times the reference
+The latency gate requires native 32768/1024 medians at most 1.5 times the reference
 and native RSS at most reference RSS plus 1 GB, at **both** thread counts.
 Native full-shape medians and RSS are **not measured** here. Neither gate passes
 from this table. Do not compare a short native shape with the full reference
@@ -140,9 +135,9 @@ At the matched 512/32 shape, the native single warm sample is approximately
 not a repeat-five acceptance ratio. Scaling only by sequence length suggests
 minutes per full native forecast and hours for both repeat-five configurations.
 That is a planning estimate, not a measured full-shape latency. Full native
-runs are deferred pending review of an optimization milestone.
+runs are deferred pending review of an optimization step.
 
-## Initial bounded profiling and proposed next milestone
+## Initial bounded profiling and proposed next step
 
 Hardware profiling was unavailable (`perf_event_paranoid=4`). A separate
 Release build with `-pg` for C, C++ and executable linking ran one cold native
@@ -168,15 +163,15 @@ The first proposed optimization scope is the measured linear contraction:
    outputs, not across the reduction dimension. Current custom linear nodes
    request one task, so more backend threads do not parallelize those loops.
 3. Change one aspect at a time, run the established component parity gates and
-   full M6b, then remeasure the same short workload and full M6c workloads.
+   full real-model parity, then remeasure the same short workload and full latency workloads.
 4. Reject any numerical regression. Do not substitute an ordinary GEMM merely
    because it is faster, and do not relax tolerances.
 
-Only after that evidence should another milestone target attention, symmetric
+Only after that evidence should a later step target attention, symmetric
 pass batching or cache reuse. No runtime optimization is part of this tooling
-change. M7/M8 general CLI, ABI and quantization work remains separate.
+change. General CLI, ABI and quantization work remains separate.
 
-## Qualified standalone-ON formal attempt: preflight HOLD
+## Standalone-ON formal attempt: not accepted
 
 After trained replay acceptance (`67ee694`), a separately authorized attempt
 uses the existing unprofiled Release ON/shared CLI from runtime `68a5a53`.
@@ -193,26 +188,25 @@ current source files byte-for-byte against that archive: StandaloneMKL.cmake,
 standalone_mkl.cpp/.hpp, standalone_mkl_algorithm.hpp, callback_context.cpp/.hpp,
 and graph_lifecycle.hpp. No manifest is silently rewritten or runtime changed.
 
-No timed samples, model runs, M6c result, or retention verdict exist for this
-attempt. No automatic retry follows; root must approve reconciled archive-based
+No timed samples, model runs, formal latency result, or retention verdict exist for this
+attempt. No automatic retry follows; owner approval is required for a reconciled archive-based
 pin lookup and a fresh output directory. Historical results remain unchanged.
-Evidence under `timestral-m6c-qualified-on-formal` relative to the work root:
-`effective-build-flags.json`, `loader-before.json`, `HOLD.json`, and
+Evidence: `effective-build-flags.json`, `loader-before.json`, and
 `pin-inventory-diagnosis.json`. Heavy job exits1 at preflight; no child forecast
-remains running. M6c remains unmeasured for this qualified production profile.
+remains running. Formal latency remains unmeasured for this qualified production profile.
 
 ## Qualified standalone-ON 68a5a53: measured latency failure
 
-After trained replay acceptance, root explicitly authorizes a second formal
-attempt using the same unprofiled Release ON/shared binary and original model.
-The setup-only first HOLD is preserved. Attempt2 reconciles only the seven
+After trained replay acceptance, a second formal
+attempt was authorized. It uses the same unprofiled Release ON/shared binary and original model.
+The setup-only first attempt, which was not accepted, is preserved. Attempt2 reconciles only the seven
 missing per-file entries against exact members of reviewed source archive
 SHA256 `082ef042a9e44304f0d3c75870437bdd803050c1e4fd765018b24b4358db2b38`
 and committed68a5a53. It does not rebaseline arbitrary files.
 
 Both configurations complete in separate processes with one discarded warmup,
 five timed 32768/1024 univariate dyadic-v1 forecasts, 60-second cooldown plus
-quiet admission, hard12GiB, and no build/instrumentation overlap. MKL is the
+quiet admission, a hard memory limit, and no build/instrumentation overlap. MKL is the
 qualified sequential profile, one vendor thread; ggml requests one/six threads.
 LD_PRELOAD is unset. Actual process maps confirm the reviewed timestral library
 and qualified LP64/sequential/core/ISA SDK DSOs, with no Torch or threaded-MKL
@@ -224,7 +218,7 @@ library. Backend JSON is `standalone-mkl-lp64-sequential-2024.0.2-20240605`.
 | 6 | 18.281547354 | 4.443924 | 4.114x | 6.665886145 | 972148736 | 2919823872 |
 
 **Both latency checks fail; both RSS checks pass.** Exit0 means measurements
-complete, not performance acceptance. Root retains final resource qualification.
+complete, not performance acceptance. Final resource qualification is still pending.
 No fast-math, numerical-tolerance, reference, or performance-gate change occurs.
 
 All timed samples in order, seconds:
@@ -262,11 +256,10 @@ Recovery load/pressure declines after each process; six-thread final recovery
 sample is9.32/5.62%. Evidence supports reporting the measured failure with
 resource caveats, not asserting that contention alone explains the gap.
 
-Evidence under `timestral-m6c-qualified-on-formal-attempt2`: numeric-summary.json,
+Evidence: numeric-summary.json,
 analysis-{1,6}.json, native-{1,6}.json/.time/.stderr, monitor/recovery JSONL,
 admission records, loader/maps records, archive-reconciliation.json,
 effective-build-flags.json, pins-before/per-configuration/final JSON.
-The wrapper and exact setup remain under `timestral-real-quant-readiness/current-68a5a53/qualified-on-m6c`.
-Root owns acceptance and any next profiling/optimization grant. No quantization
-run or further formal replay follows automatically. Current M6c latency remains
+Acceptance and any next profiling or optimization step are a separate decision. No quantization
+run or further formal replay follows automatically. Current formal latency remains
 unmet despite the passing trained numerical profile.

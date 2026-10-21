@@ -1,27 +1,27 @@
 # Parity notes
 
-Measured facts about the parity gates. Tolerances are in `docs/PLAN.md`, section D; this file
+Measured facts about the parity gates. This file
 records what was measured. It does not change a gate.
 
 ## Current scoped standalone evidence
 
 The [trained standalone replay](standalone-mkl-trained-replay.md) tests runtime
-`68a5a53` without changing floors or tolerances. Full 5M strict M3/M6b passes
-**510/141 comparisons**; supplemental eight-case 209M M3 passes **784**;
-full 15-case 209M M6b passes **159**. All 63 model/transport invocations return0.
-The supplemental M3 union is not full 15-case 209M M3 acceptance.
+`68a5a53` without changing floors or tolerances. Full 5M strict encoder and forecast replay passes
+**510/141 comparisons**; supplemental eight-case 209M encoder checks pass **784**;
+full 15-case 209M forecast replay passes **159**. All 63 model/transport invocations return0.
+The supplemental encoder union is not full 15-case 209M encoder acceptance.
 Static/shared trained C ABI, CLI, anchor, and real512 determinism checks are
 included with exact counts in that report.
 
 The [optional profile](standalone-mkl.md) remains OFF by default; its evidence
 must not be relabeled as default-native arithmetic acceptance.
 [Performance](benchmarks.md) and [quantized quality](quantization.md) remain
-separate: latency fails, and the real 474-call quality matrix is NOTRUN on URI HOLD.
+separate: latency fails, and the real 474-call quality matrix is not run (a licence-URI check is not accepted).
 Historical measurements below keep their original scope and identities.
 
 ## G0.3: stored rope tables vs the tables the reference uses at run time
 
-Preview made in M0b by `tests/python/check_convert.py` (the full gate is M0d). It runs the
+Preview made by `tests/python/check_convert.py` (the full gate is a later check). It runs the
 reference `SinCosRoPE.forward` on run-time-like layouts and compares every value with the
 stored table row of its position.
 
@@ -37,7 +37,7 @@ stored table row of its position.
 
 The sign-of-zero differences are in the dims with `inv_freq = 0` (the identity rotation), where
 `sin` is `+0` or `-0` depending on the sign of the position and on the layout. They are
-counted apart from value differences, as the plan's D.1 requires.
+counted apart from value differences, as the gate rules require.
 
 An earlier, unconventional scan of the tiny checkpoint (one position per row, very few patches)
 showed many bit differences. They were counted by raw bit pattern, so they were these same
@@ -207,10 +207,10 @@ The histogram and special counts sum to the total for each function.
 
 These results are sampled evidence, not universal bounds.
 In particular, the zero-distance `asinh` and `sinh` samples do not prove universal ULP(0).
-No gate tolerance changes. This measurement alone does not complete M0d:
+No gate tolerance changes. This measurement alone does not complete the full check:
 full-suite floors, caps, and runtime RoPE evidence remain separate acceptance requirements.
 
-## M1 native scaler measurement
+## Native scaler measurement
 
 The native host scaler passes all 14 canonical tiny cases for each of `tiny`
 and `tiny-bias` (28 fixtures). The test checks the first and last block of
@@ -247,8 +247,8 @@ A concurrent real-reference run supplied only a subset during this check:
 11 of 15 manifest cases, 22 pass/block selections, all available gates passing.
 The absent cases were `long_h`, `long_h_known`, `ctx_cap`, and `bench_32k`.
 The old command omitted `bench_32k` and returned **77**, not a full-suite pass. This does not complete real
-M1 acceptance, later milestones, or native end-to-end forecasting.
-The root acceptance run must recheck the complete real suite.
+scaler acceptance, later stages, or native end-to-end forecasting.
+The final acceptance run must recheck the complete real suite.
 
 ### Reproduce
 
@@ -308,7 +308,7 @@ regressions. None skip. Production arithmetic and tolerances remain unchanged.
 The full real suite remains pending; this review does not test files while the
 reference generator is writing them.
 
-## M2a native graphs: measured component acceptance
+## Native graphs: measured component acceptance
 
 The embedding-only encoder and stored-table RoPE now execute native CPU ggml
 graphs. No Python runs during inference. `GraphRunner` retains its gallocr and
@@ -335,7 +335,7 @@ or `i + rope_dim/2`. It uses graph view/neg/concat/mul/add with dumped tables as
 teacher-forced inputs. Partial-frequency padding leaves the unrotated tail intact.
 The stored inverse frequencies are exposed without recomputation.
 
-Gate labels in the original D.3 table differ from the M2a review numbering:
+Gate labels in the original gate table differ from the review numbering of this stage:
 this measurement covers inverse frequencies, EXACT row gathering, ULP(2) rotation
 on dumped inputs, and teacher-forced NORM patch hidden/output. It does not revise
 the original ULP(0) prediction: **all measured rotations actually achieve ULP(0)**.
@@ -367,7 +367,7 @@ Measured on the completed acceptance suite:
   that loader because it received the baseline root; rerunning with the model
   fixture root passed. Scaler still covers all 28 cases / 64 boundaries; both
   existing scaler coverage-negative tests pass. Full real scaler and full real
-  M2a acceptance remain pending, not counted as passes or skips.
+  graph acceptance remain pending, not counted as passes or skips.
 
 Unit tests additionally reject incomplete/zero patch shapes, nonboolean masks,
 invalid feature layouts and bias dimensions, extreme/out-of-range positions,
@@ -398,8 +398,8 @@ export TIMESTRAL_TEST_REAL_CASES=uni_one_patch,multi,past_cov
 "$BUILD/tests/test_rope" --real
 ```
 
-This completes the native M2a implementation and tiny gates, with real subset
-coverage only. It is not a full-real milestone acceptance or end-to-end forecaster.
+This completes the native graph implementation and tiny gates, with real subset
+coverage only. It is not a full-real acceptance or end-to-end forecaster.
 
 Four additional scratch-copy coverage-negative checks passed: each component
 rejects a missing selected `ctx_cap` file; patch rejects removed floor metadata;
@@ -408,7 +408,7 @@ RoPE rejects a removed required q-rotation tensor. An initial assertion expected
 removed its floor key. The gate correctly failed earlier at "missing metadata";
 the negative-check assertion was corrected, not the production gate.
 
-### Native time-layer replay (M2b)
+### Native time-layer replay
 
 `Encoder::run_layer` replays only metadata-scheduled `time` layers. Inputs include
 explicit boolean masks and positions; empty masks select causal attention. A
@@ -491,19 +491,19 @@ differences, zero signed-zero differences, and zero out-of-range positions.
 Native `known_cov` replay passes with the baseline environment pointing only to
 the extension: one case, two sign/block selections, four layer replays, and
 56 NORM comparisons. Missing tensors: zero. Cap warnings: zero.
-Together with the original `uni_short` result above, this resolves the M2b
-reference blocker. It does not claim native end-to-end forecasting or acceptance
-of later milestones.
+Together with the original `uni_short` result above, this resolves the
+reference blocker for the time layer. It does not claim native end-to-end forecasting or acceptance
+of later stages.
 
-All extension commands exit 0 under a 12 GiB address-space limit, one thread,
+All extension commands exit 0 under an address-space memory limit, one thread,
 and 1800-second timeouts. Peak generation RSS is 3,201,940 KiB (`f64-rerun`);
 its wall time is 26.92 seconds. Native replay takes 7.61 seconds with peak RSS
-228,924 KiB. Host available memory stays above the 6 GiB guard.
+228,924 KiB.
 The five files total 852,354,336 bytes after floor metadata. This exceeds the
-plan's per-case artifact estimate; the separate artifact-budget issue remains.
+per-case artifact estimate; the separate artifact-budget issue remains.
 No size budget or numerical gate is waived.
 
-## M2c: variate and composite layer replay
+## Variate and composite layer replay
 
 `Encoder::run_layer` now accepts every metadata-scheduled layer kind. The
 existing time-only convenience wrapper keeps its API and rejects other kinds.
@@ -544,14 +544,14 @@ and allocator reuse across graph size changes. Both bias/gate configurations run
 
 Final regression CTest passes 19/19 with zero skips, excluding the older loader
 and real composite test for separate invocations. The standalone loader passes.
-Real M2b `uni_short` and the separate additive `known_cov` extension pass with
+Real time-layer `uni_short` and the separate additive `known_cov` extension pass with
 56 comparisons each, retaining ratios 0.711712 and 0.647168. The real composite
 gate passes separately on canonical `multi,past_cov`. CLI negative tests reject
 unknown/duplicate selections, missing cases, and missing tensor/floor/stat/cap
 families. The scaler CLI coverage regression also passes.
 
 Reproduce with caller-supplied paths (`SUITE` is the finalized canonical A1
-suite; `EXTENSION` is its separate M2b extension; `TIMESTRAL_TEST_GGUF` is the
+suite; `EXTENSION` is its separate time-layer extension; `TIMESTRAL_TEST_GGUF` is the
 real F32 model):
 
 ```sh
@@ -571,13 +571,13 @@ python3 tests/test_layer_coverage.py "$BUILD/tests/test_layer_time_variate" \
 python3 tests/test_scaler_coverage.py "$BUILD/tests/test_scaler" "$SUITE" "$SCRATCH"
 ```
 
-Default real M2b coverage is intentionally not redirected to the extension:
+Default real time-layer coverage is intentionally not redirected to the extension:
 the canonical known_cov fixture lacks layer 22. Explicit selections above avoid
 mistaking that known reference gap for a skip or overwriting canonical data.
 These results establish layer replay only, not full-encoder or forecasting
 acceptance. No performance, GPU, or quantized parity claim is made.
 
-## M3 native full encoder: code complete, real acceptance pending
+## Native full encoder: code complete, real acceptance pending
 
 `Encoder::run` builds one CPU F32 graph from the dumped `tf.in`, runs every
 metadata-scheduled block, and applies `out_norm`. RoPE is gathered once. The
@@ -587,7 +587,7 @@ API shares the graph construction. Graph metadata capacity is bounded before
 construction. There is no Python inference, dimension/schedule override, or
 change to `max(2 * floor, 16u)`.
 
-A throwing full-encoder placeholder produced a meaningful red unit failure;
+A throwing full-encoder stub produced a meaningful red unit failure;
 the implementation then passed the complete tiny suite. Both bias/gate
 configurations and all four layer kinds run, with both signs and first/last
 forecast blocks:
@@ -604,13 +604,13 @@ consecutive ratios exceeded 1.5. Sparse real diagnostics cannot establish
 adjacent-layer amplification and explicitly print that limitation. The tests
 report repeated amplification without relaxing tolerances.
 
-**Real M3 is not accepted.** Actual canonical tensor inspection found all 24
+**Real encoder replay is not accepted.** Actual canonical tensor inspection found all 24
 layers for `uni_short` (not the initially assumed sparse coverage), layers
 `[0,3,7,23]` for `multi` and `known_cov`, and `[0,3,23]` for `nans`.
 The separate existing known_cov extension adds layer 22 only. Strict tests for
 multi, known_cov, and nans exit 1 at missing layer 1, as required. Across both
 signs these lack 40, 40, and 42 layer references respectively. No reference was
-modified or generated for M3.
+modified or generated for this stage.
 
 There is also an actual numerical failure, **not a missing-reference failure**:
 strict canonical `uni_short` passes all 24 positive-pass local/free-running
@@ -621,11 +621,11 @@ layer 15, not a repeated streak. These results require numerical localization
 before all-real acceptance; additional references alone do not resolve it.
 The combined real diagnostic stopped at this same failure, exit 1. Individual
 sparse diagnostics above exited 0 but are explicitly **not G3 acceptance**.
-Measured combined diagnostic peak RSS was 924604 KiB, below 12 GiB.
+Measured combined diagnostic peak RSS was 924604 KiB, within the harness memory limit.
 
 Regression CTest: 21/21 pass, zero skips, excluding the old loader and the two
 real composite/encoder gates for separate execution. The standalone loader,
-real M2c multi/past_cov and real M2b extended known_cov all exited 0. Encoder
+real composite multi/past_cov and real extended known_cov all exited 0. Encoder
 units cover invalid embeddings, masks, positions, selection, malformed teacher
 boundaries, bounded graph capacity, teacher isolation, repeated calls, and
 shape growth/shrinkage. The CLI negative suite passed 3 tests, including nine
@@ -654,10 +654,10 @@ TIMESTRAL_TEST_REAL_CASES=multi,known_cov,nans \
   "$BUILD/tests/test_encoder" --real --selected-reference
 ```
 
-M4–M8, the C API, and Python-free forecasting end-to-end acceptance remain
-outside this encoder milestone.
+Later stages, the C API, and Python-free forecasting end-to-end acceptance remain
+outside this encoder work.
 
-### M3 numerical repair: strict real encoder gates
+### Numerical repair: strict real encoder gates
 
 The negative `uni_short` layer-6 failure is repaired without changing any
 comparison tolerance, floor, reference tensor, or model weight. Strict replay
@@ -703,7 +703,7 @@ The dedicated `test_encoder_negative_layer6_209m` fails on the original
 implementation and checks that a corrupted output is rejected.
 
 Verification (caller supplies `BUILD`, `SUITE`, `EXTENSION`, and the real
-`TIMESTRAL_TEST_GGUF`; no private paths are required):
+`TIMESTRAL_TEST_GGUF`):
 
 ```sh
 export TIMESTRAL_TEST_TINY="$SUITE" TIMESTRAL_TEST_REAL_BASELINES="$SUITE"
@@ -721,15 +721,15 @@ TIMESTRAL_TEST_REAL_CASES=multi,past_cov \
 
 The regression selection passes 22/22, zero skips, including the 28 tiny
 cases, bias/gate variants, scaler/patch/RoPE gates, and negative-layer-6 test.
-Separate loader, real M2c (`multi,past_cov`), and extended real M2b
-(`known_cov`, layers 0/22) checks also pass. M4 and later milestones remain
+Separate loader, real composite (`multi,past_cov`), and extended real time-layer
+(`known_cov`, layers 0/22) checks also pass. Later stages remain
 outside this repair.
 
-### M4 normalized floor contract addendum
+### Normalized floor contract addendum
 
 G4.3 uses `normalized-v1`, with the dumped float32 anchor held fixed across
 both companions. The existing `floor_fr.*.predict` metadata uses raw output
-space (PLAN C.4); it is not a normalized-space floor (PLAN D.3 G4.3).
+space; it is not a normalized-space floor (G4.3).
 `tests/predict_metric.hpp` therefore derives a separately named in-memory
 floor from the existing f64 and f32-math companion predictions. It never
 rewrites or reinterprets stored floor keys. G3 and G4.1 retain their existing
@@ -747,11 +747,11 @@ companions and zero normalized RMS are errors, never fallback paths.
 multiple row frames, both companions, zero RMS, invalid scales and corrupt
 native output. Reference generation and all baseline files remain unchanged.
 
-M4 native validation covers all context-only manifest cases, both signs, block
+Native validation covers all context-only manifest cases, both signs, block
 zero: tiny/tiny-bias 16 cases, 32 selections, 96 comparisons; real 9 cases,
 18 selections, 54 comparisons, including `ctx_cap` and `bench_32k`.
 All three gates pass with no missing companions. Maximum G4.1 ratios are
-0.632549 (tiny variants) and 0.627645 (real). The strict extended M3 replay
+0.632549 (tiny variants) and 0.627645 (real). The strict extended encoder replay
 remains mandatory after the shared small-linear and narrow SDPA changes.
 Native kernels read weights and inputs only, never reference tensors.
 
@@ -763,7 +763,7 @@ float32 multiply/add. The head uses the existing SLEEF-derived exponential
 and a double prefix accumulator with each cumsum prefix cast to float32.
 The retained component and end-to-end gates reject the pre-fix arithmetic.
 
-M4 companion admission checks are performed before flattening predictions:
+Companion admission checks are performed before flattening predictions:
 `mode` must declare `f64` or `f32-math`, respectively, and the prediction dtype
 must be F64 or F32. Every padded dimension must equal `[Q,h*patch_size,R,1]`.
 The reference must declare `f32`. Case, model configuration, source revision,
@@ -775,7 +775,7 @@ wrong shapes and provenance mismatches. Explicit real case selections reject
 unknown, duplicate and non-context cases rather than ignoring them.
 NaN raw head values are errors, never saturated into finite quantiles.
 
-### M5 native masks, rows, and covariate prediction
+### Native masks, rows, and covariate prediction
 
 `build_masks` builds boolean time/variate masks, key validity, sorted group
 indices, first-observation offsets, shared two-stream positions, and decoder
@@ -822,7 +822,7 @@ No Python runtime is linked or invoked by these native tests or prediction.
 The NumPy-derived reduction retains its upstream notice under
 `third_party/notices`; this does not select a project-wide licence.
 
-M5 validation covers all 28 tiny/tiny-bias and all 15 real manifest cases.
+Validation covers all 28 tiny/tiny-bias and all 15 real manifest cases.
 Mask coverage includes 164 tiny and 36 real signed block selections (every
 block), with 1,328 and 300 exact comparisons respectively. Assembly coverage
 includes both signs of every case: 222 tiny and 117 real comparisons, including
@@ -839,7 +839,7 @@ from the full real run. The already-passing full slow context-only replay is
 not repeated for diagnostic-only changes. Each final replay labels native
 comparisons separately from deliberately corrupted-output negative controls.
 
-Final M5 native verification passes 8/8 targeted CTests and 27/27 regression
+Final native verification passes 8/8 targeted CTests and 27/27 regression
 CTests, zero skips, plus the standalone loader. Tiny prediction's maximum
 error/tolerance is 0.618082; final real covariate prediction's is 0.772957.
 The unchanged strict extended encoder replay passes 6 selections, 144 local
@@ -848,7 +848,7 @@ amplification report remains visible (one report, maximum adjacent 4.24367),
 not suppressed. Composite/time extensions pass 92/56 comparisons. All 215
 canonical suite GGUF checksums remain unchanged.
 
-M5 review correction: categorical assembly passes the GGUF
+Review correction: categorical assembly passes the GGUF
 `timestral.target_encoding.smooth` value rather than the standalone helper's
 default. The loader and assembly require finite positive weights. The
 reference documents this parameter as a smoothing weight; its unchecked
@@ -866,7 +866,7 @@ new full-real replay built from a committed review-fix snapshot, with archived
 source, executable and before/after checksums. No baseline or metric changes
 are involved in this correction.
 
-## M6a: isolated advancing frames and refinement (G6.1)
+## Isolated advancing frames and refinement (G6.1)
 
 `src/refine.cpp` replays the pinned reference scaler/forecaster algorithms on
 host double inputs, without invoking the encoder. The context moments and
@@ -915,12 +915,12 @@ ctest --test-dir "$BUILD" -j1 -R '^(test_head|test_predict_block)$' --output-on-
 Results: 3/3 refine CTests, 24/24 bounded fast regression CTests, and 2/2
 tiny head/prediction CTests pass, zero skips. All 215 canonical baseline
 checksums remain unchanged. TDD starts with a compiled stub failing
-`M6a not implemented`, then passes units and full dumped-input replay.
-Existing M3/M4/M5 arithmetic sources are unchanged; the slow real encoder
+with a not-implemented message, then passes units and full dumped-input replay.
+Existing encoder, floor and mask arithmetic sources are unchanged; the slow real encoder
 is deliberately not rerun. Full AR decode and end-to-end acceptance remain
-M6b work, not evidence claimed by this isolated gate.
+forecast work, not evidence claimed by this isolated gate.
 
-## M6b: native autoregressive forecast
+## Native autoregressive forecast
 
 The native C++ API and comparison contracts are documented in `forecast.md`.
 All inputs and reference companions remain the accepted A1 suite. No floor
@@ -950,11 +950,9 @@ The final replay must use an archived executable built from a committed source
 revision, with source/archive/binary SHA-256 recorded before and after replay.
 The test logs contain every per-case, per-sign, per-block error, floor, tolerance,
 and frame. Completion of the full 15-case 209M replay is a separate requirement;
-the focused result alone does not establish M6b acceptance.
+the focused result alone does not establish forecast acceptance.
 
 
 Final pinned replay: **all 28 tiny and 15 real cases pass**, with every block
-and final forecast checked. The complete per-block error/tolerance table,
-exact counts, SHA-256 pins, commands, resource usage, and log mapping are in
-[M6b final replay evidence](m6b-parity.md). No implementation source changes
+and final forecast checked. No implementation source changes
 after the pinned replay. Independent review and publication remain separate.

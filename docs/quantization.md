@@ -2,13 +2,13 @@
 
 The recorded producer/scorer, frozen 79 mappings, protocol-v2 native driver,
 optional quantizer/CLI, and F32 anchor capture are implemented. This does not
-establish real-model quantization quality. The full **474-call matrix is NOTRUN**.
+establish real-model quantization quality. The full **474-call matrix is not run**.
 Retained F16/Q8 artifacts fail strict licence-URI lineage equality against the
-original F32; the cohort remains **HOLD**. No validator exception is accepted here.
+original F32; the cohort is **not accepted**. No validator exception is accepted here.
 Read-only storage/finite-value diagnostics do not replace this gate.
 
 The [standalone trained F32 replay](standalone-mkl-trained-replay.md) closes its
-scoped F32 prerequisites, not M7 quality. [Formal performance](benchmarks.md)
+scoped F32 prerequisites, not quantized quality. [Formal performance](benchmarks.md)
 remains a latency failure. The default backend remains native; optional standalone
 builds must identify their profile separately.
 
@@ -49,7 +49,7 @@ from the current tree.
 
 ## Preparatory Python implementation
 
-`scripts/quant_metrics.py` implements model-free row metrics, equal-row/equal-item summaries, relative changes, coverage HOLD, and strict-order checks.
+`scripts/quant_metrics.py` implements model-free row metrics, equal-row/equal-item summaries, relative changes, coverage not accepted, and strict-order checks.
 Scores encode infinities and undefined values as JSON-safe tagged objects with `value=null`, a `kind`, and a `status`.
 Summaries preserve item identities, row counts, and row-status counts without finite-only filtering.
 The caller supplies frozen native anchors; this module cannot extract or recompute them.
@@ -72,8 +72,8 @@ All metric operands validate before undefined propagation; unknown score statuse
 Signed relative-change outputs remain valid JSON report values.
 Empty coverage fails; the producer requires exactly 79 frozen identities, not an arbitrary nonempty subset.
 They compare input bytes with a separately extracted original generator body and check future independence.
-They also check known-bad metrics, zero denominators, aggregation statuses, and error-match coverage HOLD.
-These tests are preparation, not M7 numerical acceptance.
+They also check known-bad metrics, zero denominators, aggregation statuses, and error-match coverage not accepted.
+These tests are preparation, not numerical acceptance.
 The recorded runner, CLI transport, and native anchor extraction are implemented; their early slice tests do not establish real quality.
 `eval_quant.py` now orchestrates recorded-output validation, per-row scoring, separate suite summaries, and numerical checks.
 Its unit tests use explicitly mocked small fixtures, not model outputs or milestone evidence.
@@ -83,13 +83,13 @@ Its unit tests use explicitly mocked small fixtures, not model outputs or milest
 The F16 slice adds storage policy and projection dispatch, not real-model acceptance.
 Keep the existing F32 callback branches and their arithmetic unchanged.
 Reduced weights use GGML matmul with F32 graph inputs and outputs, followed by F32 bias addition.
-GGML may internally round activations to F16; M7 quality metrics cover this difference, not strict reference parity.
+GGML may internally round activations to F16; the quality metrics cover this difference, not strict reference parity.
 Cover `affine`, the residual patch projection, and the small-input head projection before the loader accepts F16.
 Only B.4 weights permit F16; all other tensors remain F32.
 At this historical F16 slice, Q8, K-quants, and BF16 remained rejected; later slices add Q8_0 and K support.
 The converter permutes QKV before F16 casting and records output-type provenance without replacing licence/source metadata.
 Use synthetic fixtures and existing F32 regressions for this preparatory slice.
-M6c, the 5M F32 prerequisite, real-model quality evaluation, and milestone acceptance remain separate gates.
+Formal latency, the 5M F32 prerequisite, real-model quality evaluation, and overall acceptance remain separate gates.
 
 ## Preparatory Q8_0 implementation slice
 
@@ -107,7 +107,7 @@ Cross-language byte checks require the built `test_q8` oracle through `TIMESTRAL
 The existing F16 rejection control now uses Q8_1 instead of the newly supported Q8_0.
 The existing Python unsupported-format control now uses Q4_K; F32/F16 byte-oracle coverage remains unchanged.
 The 209M metadata audit confirms all 142 B.4 weights satisfy row divisibility; no real weights are converted by synthetic tests.
-This historical slice does not establish model-level acceptance. Current scoped F32 replay passes; formal M6c latency still fails.
+This historical slice does not establish model-level acceptance. Current scoped F32 replay passes; formal latency still fails.
 
 ## Preparatory K-quant writer design
 
@@ -133,7 +133,7 @@ The separately enabled CLI slice exposes exactly `quantize <in.gguf> <out.gguf> 
 It links the optional tool library only when `TIMESTRAL_BUILD_QUANTIZE=ON`; OFF preserves unsupported-command behavior.
 Synthetic subprocess tests check all three output formats, actual hashes, schema loading, usage errors, and no-clobber behavior.
 Durability-uncertain publication returns exit 1 with an explicit output-exists diagnostic, not a rollback claim.
-No source snapshot, test, or synthetic conversion establishes M6c, 5M parity, or model-level quantization acceptance.
+No source snapshot, test, or synthetic conversion establishes formal latency, 5M parity, or model-level quantization acceptance.
 
 The synthetic core-writer build uses base commit `a17a8b29302c53a23dc7b99cf1c0fa6b972ecef9` plus the K slice.
 That base includes the accepted anchor capture; it does not include the later driver.
@@ -143,7 +143,7 @@ OpenSSL Crypto comes from the system runtime, with matching scratch development 
 Synthetic transaction tests cover six complete conversions, reference bytes, all three routes, copied typed KV, actual hashes, cleanup, and no-clobber races.
 They also check the link fallback and the published-but-durability-unconfirmed result.
 The final focused run uses corrected synthetic RoPE tables and emits no RoPE warnings.
-All builds/tests use a 12 GiB address-space cap, serial execution, and at most two compiler jobs.
+All builds/tests use an address-space memory cap, serial execution, and at most two compiler jobs.
 
 ## Scope and invariants
 
@@ -151,9 +151,9 @@ Compare reduced-precision forecasts with F32 C++ forecasts on identical inputs.
 Score both forecasts against independent held-out truth.
 Use all 15 C.2 cases, including both slow cases, plus 64 synthetic evaluation items.
 Keep the existing reference generators, parity helpers, floors, and canonical case specification unchanged.
-These quantization metrics do not replace the M3 or M6b parity gates.
+These quantization metrics do not replace the encoder or forecast parity gates.
 
-Use Timestral-5M only for the F32 prerequisite described in [the plan](PLAN.md).
+Use Timestral-5M only for the F32 prerequisite.
 Use Timestral-209M for quantization evaluation, including K-quants.
 Reject rows incompatible with the requested quantization block size.
 Do not pad dimensions, change runtime dimensions, or silently retain incompatible allowlisted weights.
@@ -162,7 +162,7 @@ The B.4 allowlist and its explicit F32 exclusions still apply.
 ## Recorded-output scoring protocol: `quant-record-v1`
 
 `eval_quant.py --manifest FILE --report FILE` reads records only; it never launches a model or public forecast command.
-Exit codes are 0 for recorded numerical checks passing, 1 for FAIL/HOLD, and 2 for invalid input or arguments.
+Exit codes are 0 for recorded numerical checks passing, 1 for FAIL or not accepted, and 2 for invalid input or arguments.
 Container and record validation precedes lookups, including preliminary overwrite checks.
 Malformed JSON structures exit with a diagnostic and no report, not a traceback.
 The command rejects manifest/NPZ overwrite aliases, including symlink aliases; recorded NPZ symlinks are invalid.
@@ -197,7 +197,7 @@ Forecasts must be finite and nondecreasing along quantiles.
 An error record has exactly `status`, `type`, `message`, and `stage`; status is `expected-error` or `error`.
 These error details are driver assertions, not independent verification of the reference's expected error.
 A match requires every field to equal the F32 expected-error record.
-Matching errors remain coverage gaps and HOLD numerical acceptance.
+Matching errors remain coverage gaps, and the numerical result is not accepted.
 
 When F32 forecasts exist, store only one pair of F32 `anchor_loc` and `anchor_scale` arrays, both `(B,V)`.
 Associate them through `anchor_model_sha256`, which must equal the F32 model hash, never a quantized model hash.
@@ -206,7 +206,7 @@ When F32 has no forecast, use null anchor association and omit both anchor array
 Do not score any format without its F32 forecast and shared anchors.
 
 The report preserves per-row metrics, item identities, named coverage gaps, and all three suite summaries: C.2, synthetic, and overall.
-Missing required identities invalidate the manifest; declared error records produce HOLD rather than invented numeric values.
+Missing required identities invalidate the manifest; declared error records produce a not-accepted status rather than invented numeric values.
 Use the approved F16/Q8 bounds and overall strict normalized-mean ordering; MASE has no numerical bound.
 Reports distinguish checked array/fixture hashes from asserted driver/model provenance.
 Write reports through a temporary file in the destination directory, then atomically replace the destination.
@@ -349,7 +349,7 @@ F32 component/tiny CTest passes **37/37**, loader separately **1/1**; complete
 tiny forecast replay passes **28 cases / 684 comparisons**, zero failures,
 worst ratio `0.618082`. No full real aggregate parity replay runs here.
 
-Evidence under `timestral-native/m7-anchors`: `base-commit.txt`, `base.tar`,
+Evidence files: `base-commit.txt`, `base.tar`,
 `anchor-runtime.patch`, `configure.log`, `final-build.log`,
 `anchors-final-tiny.log`, `anchors-real.log`, `f32-component-tiny.log`,
 `loader.log`, `forecast-tiny.log`, `tested-source.tar`, `before.json`,
@@ -359,10 +359,10 @@ The archive configure log reports surrounding-repository commit `be955f52d`
 through Git discovery; all **1962 vendor blobs** in the actual vendor archive
 and pinned tested-source archive match ggml
 `e705c5fed490514458bdd2eaddc43bd098fcce9b` exactly.
-Builds/tests use `-j2`, serial CPU execution, and the hard 12 GiB guard.
+Builds/tests use `-j2`, serial CPU execution, and a hard memory guard.
 Concurrent F16/Q8 runtime edits are excluded from this validation.
 This historical extraction predates the implemented quant-record driver. It does not
-accept M6c, quantized quality, or the complete M7 milestone.
+accept formal latency, quantized quality, or the complete quantization work.
 
 Let `f[i]` denote F32 C++ forecasts and `q[i]` denote reduced-precision forecasts.
 Include all horizon steps and quantiles within each row.
@@ -413,7 +413,7 @@ If `A` is nonempty, `d=0`, and `a>0`, assign infinite MASE with status `zero-sca
 If `A` is empty, report undefined MASE with status `no-observed-adjacent-pairs`.
 The constant case can have infinite MASE; the fully missing row has undefined MASE.
 An undefined full aggregate is an explicit limitation, not a finite-only replacement metric.
-MASE has no acceptance bound in the plan.
+MASE has no acceptance bound.
 
 ### Relative loss changes
 
@@ -448,7 +448,7 @@ It cannot replace the full aggregate.
 
 Match expected canonical errors for every precision when F32 returns an expected error.
 Error matching is not a numerical pass.
-Report the missing forecast as a coverage gap and HOLD numerical acceptance when any required forecast is missing.
+Report the missing forecast as a coverage gap, and mark numerical acceptance as not accepted when any required forecast is missing.
 Never score an error as zero forecast deviation.
 
 The existing acceptance targets remain:
@@ -467,12 +467,12 @@ Apply strict monotonicity only to aggregate mean normalized deviation:
 
 Do not require per-case, maximum-error, WQL, or MASE monotonicity.
 A tie or reversal fails the strict-order target; report measured results without sorting or adding slack.
-Any target change requires a separate measured decision under the plan.
+Any target change requires a separate measured decision.
 
 ## Frozen 64-series specification
 
 The implemented generator uses the explicit inputs and options below.
-Real quality execution remains on HOLD; fixture implementation is not quality acceptance.
+Real quality execution is not accepted; fixture implementation is not quality acceptance.
 The [generator-shaped case mappings](synthetic64-v1.cases.json) contain all 64 inputs, not golden baselines or forecast results.
 The JSON uses the existing `version` and `cases` shape; it does not embed forecast options unsupported by that schema.
 Apply the following resolved options to every item instead of relying on evolving defaults.
@@ -480,7 +480,7 @@ Apply the following resolved options to every item instead of relying on evolvin
 ### Frozen forecast options and provenance
 
 Use the pinned 209M configuration at Hub revision `9874d252ab0aae16f7f7c999f98f98d6ad7d8365`.
-Its configuration values below come from PLAN A.0; constructor defaults come from the converter, not Hub configuration fields.
+Its configuration values below come from the pinned model configuration; constructor defaults come from the converter, not Hub configuration fields.
 The upstream algorithm pin is `a534bdbd244d64f3d9d743f46c7bf6fc330ed4ff` (`NOTICE` and converter `CODE_SHA`).
 The inspected native source snapshot is `8017889c84c5540ad852e1c57dbc9b6185a88f9d`.
 
@@ -488,14 +488,14 @@ The inspected native source snapshot is `8017889c84c5540ad852e1c57dbc9b6185a88f9
 |---|---|---|
 | Symmetric averaging | `true` | Converter `DEFAULT_FORECASTER`; native `Forecaster::forecast`. |
 | Nonnegative clipping | `true` | Same sources; native eligibility uses original observed target context. |
-| Maximum context | `32768` steps | PLAN A.0 `context_length`; native zero request resolves to that value. Set it explicitly for evaluation. |
+| Maximum context | `32768` steps | Model configuration `context_length`; native zero request resolves to that value. Set it explicitly for evaluation. |
 | Per-shot horizon | `32` patches | Converter default; native decode limits it to configuration `block_size=32`. |
-| Patch size | `32` | PLAN A.0 configuration. |
+| Patch size | `32` | Model configuration. |
 | Quantile real cap | `10000.0` | Converter default; native `Forecaster::raw`. |
-| Extreme feedback threshold | `1e30` | Converter default; native `Forecaster::decode`. |
+| Extreme feedback limit | `1e30` | Converter default; native `Forecaster::decode`. |
 | Refinement | Call `refine_block` for every block; bypass only when that block has <=1 patch. | Native decode and `src/refine.cpp`; no request-level refine switch exists. |
 | Refinement targets | Target rows only when covariate roles exist; otherwise all packed rows. | Native decode creates `role==0` selection. |
-| Scaling | `minimum_scale=1e-6`, `use_asinh=true`, global stabilization `false` | PLAN A.0 configuration. |
+| Scaling | `minimum_scale=1e-6`, `use_asinh=true`, global stabilization `false` | Model configuration. |
 | User observation mask | Absent | Missingness comes only from each case's generated values. |
 
 Use the converter's stored metadata for non-request options and check these resolved values before evaluation.
