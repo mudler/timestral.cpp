@@ -72,7 +72,7 @@ int main(int argc,char**argv){try{
  for(auto v:{"tiny","tiny-bias"})units(Model::load(models+"/timestral-"+v+"-f32.gguf"));
  if(argc>1&&std::string(argv[1])=="--unit")return 0;
  bool real=argc>1&&std::string(argv[1])=="--real",head_only=argc>2&&std::string(argv[2])=="--head-only";
- const char* root=getenv(real?"TIMESTRAL_TEST_REAL_BASELINES":"TIMESTRAL_TEST_TINY");require(root,"baseline root unset");size_t cases=0,blocks=0,failed=0;
+ const char* root=getenv(real?"TIMESTRAL_TEST_REAL_BASELINES":"TIMESTRAL_TEST_TINY");if(!root){std::cerr<<"SKIP: baseline root unset\n";return 77;}size_t cases=0,blocks=0,failed=0;
  std::string subset=getenv("TIMESTRAL_TEST_REAL_CASES")?getenv("TIMESTRAL_TEST_REAL_CASES"):"all";
  auto specs=manifest(real);auto selected=predict_case_selection(real?subset:"all",specs);
  for(auto variant:real?std::vector<std::string>{"real"}:std::vector<std::string>{"tiny","tiny-bias"}){

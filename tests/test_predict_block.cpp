@@ -37,7 +37,7 @@ void check(const Model& m,Fixture& f,Fixture& truth,Fixture& math,const std::str
 int main(int argc,char**argv){try{
  units();if(argc>1&&std::string(argv[1])=="--unit")return 0;
  bool real=argc>1&&std::string(argv[1])=="--real";
- const char* root=getenv(real?"TIMESTRAL_TEST_REAL_BASELINES":"TIMESTRAL_TEST_TINY");require(root,"baseline root unset");
+ const char* root=getenv(real?"TIMESTRAL_TEST_REAL_BASELINES":"TIMESTRAL_TEST_TINY");if(!root){std::cerr<<"SKIP: baseline root unset\n";return 77;}
  const char* mr=getenv("TIMESTRAL_TEST_MODEL_ROOT");std::string models=mr?mr:TS_SOURCE_DIR "/tests/fixtures/tiny";
  std::string subset=getenv("TIMESTRAL_TEST_REAL_CASES")?getenv("TIMESTRAL_TEST_REAL_CASES"):"all";
  auto specs=manifest(real);std::set<std::string> selected;

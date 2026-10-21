@@ -89,7 +89,11 @@ add_test(NAME test_refine_209m COMMAND test_refine --real)
 ts_add_test(test_forecast)
 add_test(NAME test_forecast_units COMMAND test_forecast --unit)
 add_test(NAME test_forecast_209m COMMAND test_forecast --real)
-set_tests_properties(test_forecast_209m PROPERTIES LABELS "slow")
+set_tests_properties(test_forecast_209m PROPERTIES LABELS "slow" SKIP_RETURN_CODE 77)
+
+# Real-baseline runs skip (77) when TIMESTRAL_TEST_REAL_BASELINES is unset.
+set_tests_properties(test_head_209m test_masks_209m test_covariates_209m
+  test_predict_block_209m test_refine_209m PROPERTIES SKIP_RETURN_CODE 77)
 
 ts_add_test(test_f16)
 ts_add_test(test_q8)
