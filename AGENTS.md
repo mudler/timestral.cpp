@@ -24,7 +24,7 @@ self-contained GGUF file on CPU, with no Python at inference. The work order is
 5. Test return codes: 0 pass, 1 fail, 77 skip (a missing input). A skip is not a
    pass for a milestone gate.
 6. No absolute local paths, host names or private notes in the repository.
-7. Do not add a `LICENSE` file until the code licence is chosen.
+7. The code is MIT licensed (`LICENSE`). Keep `NOTICE` and `third_party/notices/` with it, and do not remove upstream notices.
 
 ## Build and test
 

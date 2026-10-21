@@ -32,4 +32,5 @@ Third-party code
   PyTorch / ATen, BSD-style licence; complete upstream copyright notices,
   conditions and disclaimer are in third_party/notices/PyTorch.txt.
   Exact source revisions, scope and changes: third_party/notices/README.md.
-  These scoped notices do not select a project-wide code licence.
+  The project code itself is MIT licensed (see LICENSE). These scoped notices
+  keep their own licences.

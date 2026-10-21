@@ -246,7 +246,6 @@ CPU only. The CMake GPU options compile ggml's CUDA, Metal and Vulkan backends, 
 - Close the latency gap with the PyTorch reference in the default native build.
 - Bring Q8_0 under its 0.005 quality bound. The bound will not change to make the test pass.
 - Run the forecaster on the GPU backends.
-- Choose a code licence and add a `LICENSE` file.
 
 ## Citation
 
@@ -267,6 +266,6 @@ Ettore Di Giacinto (mudler)
 
 ## License
 
-The code licence is not chosen yet. Do not reuse this code until a LICENSE file is added.
+The code is licensed under the MIT License. See [LICENSE](LICENSE).
 
-The Timestral-209M weights are published by Mistral AI under their own licence. [NOTICE](NOTICE) lists the third-party notices. It does not select a code licence.
+The Timestral-209M weights are published by Mistral AI under their own licence. [NOTICE](NOTICE) lists the upstream and third-party notices, which keep their own licences.
