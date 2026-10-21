@@ -1,7 +1,8 @@
-# Flat C ABI: approved preparatory transport design
+# Flat C ABI
 
-This implements the eight PLAN M8 functions without changing inference.
-It is preparatory transport work, not acceptance of M6c, M7, or the general CLI.
+This document describes the eight flat C functions in `include/timestral_capi.h`.
+The functions wrap the native forecaster without changing inference.
+The `timestral-cli forecast` command calls this ABI.
 
 Handles own Model then Forecaster and are non-reentrant; callers serialize all
 operations on one handle. Independent handles may execute independently.
@@ -70,7 +71,7 @@ Concurrent use or free of the same handle is unsupported; independent handles
 have independent allocators/errors. Load and forecast never leave a changed
 thread-count setting in the calling thread.
 
-## Verified preparatory transport result
+## Transport checks
 
 Static and shared Release builds pass the following bounded checks, CPU-only,
 serial under 12 GiB, using `-j2` compilation:
@@ -119,21 +120,3 @@ export TIMESTRAL_TEST_GGUF="$MODEL"
 ctest --test-dir "$STATIC" -R '^test_capi(_209m)?$' -j1 --output-on-failure
 ctest --test-dir "$SHARED" -R '^test_capi(_209m)?$' -j1 --output-on-failure
 ```
-
-Scratch evidence under `timestral-native/m8-capi` relative to the work root:
-
-| Artifact | Meaning |
-|---|---|
-| `static-configure.log`, `shared-configure.log` | Separate static/shared configurations |
-| `static-verified-build.log`, `shared-verified-build.log` | Final tested builds |
-| `static-verified-tiny.log`, `shared-verified-tiny.log` | Final tiny/error/layout counts |
-| `static-real.log`, `shared-real.log` | Explicit real transport counts and byte sizes |
-| `static-verified-ctest.log`, `shared-verified-ctest.log` | Final 2/2 CTest runs with actual real fixtures |
-| `c99-strict.log`, `c99-strict.o` | Strict C99 compile probe |
-| `symbols.log`, `ldd.log` | Exact C symbol set and embedded ggml dependency check |
-| `verified-source.tar`, `verified-before.json`, `verified-after.json` | Tested source and unchanged static/shared binary hashes |
-| `source-commit.txt` | Final local implementation pin |
-
-No inference source, model, reference, tolerance, or floor changes accompany
-this transport. M6c performance, keypack retention, M7 acceptance, and general
-CLI work remain separate and pending. No CLI command is implemented here.

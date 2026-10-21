@@ -1,7 +1,7 @@
 # Native forecast API (M6b)
 
-Include `timestral.h`, link `timestral`, and use C++17. The flat C ABI and CLI
-remain later milestones; this header does not claim those interfaces exist.
+Include `timestral.h`, link `timestral`, and use C++17. The flat C ABI
+([capi.md](capi.md)) and the CLI ([cli.md](cli.md)) both call this API.
 
 ```cpp
 #include "timestral.h"

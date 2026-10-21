@@ -1,9 +1,9 @@
-# Approved preparatory CLI design
+# CLI design
 
-Forecast and info run alongside the unchanged bench command.
-The optional quantize command requires `TIMESTRAL_BUILD_QUANTIZE=ON`.
-With that option OFF, the existing unsupported-command behavior remains unchanged.
-This transport work does not accept M6c performance, M7 quality, or the whole M8 milestone.
+`timestral-cli` provides the `info` and `forecast` commands, next to the `bench` command.
+The optional `quantize` command requires `TIMESTRAL_BUILD_QUANTIZE=ON`.
+With that option OFF, `quantize` is not available and the CLI rejects it.
+Performance and quality results are in [benchmarks.md](benchmarks.md) and [quantization.md](quantization.md).
 
 ## Optional quantize command
 
@@ -83,11 +83,12 @@ printing tensor weights. Neither command changes model defaults silently.
 Exit status 2 indicates usage or input-file errors; 1 indicates load, inference,
 or output-write failure; 0 indicates success. Output is fully rendered before
 writing, and write errors are checked after flushing. A broken pipe can still
-be subject to the platform's SIGPIPE policy. Quantize is explicitly unsupported.
+be subject to the platform's SIGPIPE policy. The quantize command is available only
+when the CLI is built with `TIMESTRAL_BUILD_QUANTIZE=ON`, and it accepts only an F32 GGUF input.
 The existing bench calculation and JSON code are unchanged; only dispatch to
 the new commands precedes that branch.
 
-## Verified preparatory transport
+## Transport checks
 
 The shared Release CLI passes **34 process checks and 6 byte comparisons**
 in the tiny harness: basic transport, two-series/two-variate missing inputs,
@@ -124,15 +125,6 @@ TIMESTRAL_TEST_REAL_BASELINES="$SUITE" "$REFERENCE_PYTHON" tests/test_cli.py \
   --model "$MODEL" --scratch "$REAL_SCRATCH"
 ```
 
-Evidence under `timestral-native/m8-cli`, relative to the work root:
-`configure.log`, `build.log`, `flush-build.log`, `final-ctest.log`,
-`final-tiny.log`, `final-real.log`, `output-failure.log`, generated CSV inputs,
-`final-source.tar`, `final-before.json`, `final-after.json`, and
-`source-commit.txt`. The archive/CLI/shared-library hashes match before/after
-final direct suites. The CTest log precedes the final output-flush adjustment;
-final direct suites rerun the same harness on the final binary.
-
-
 ## Numeric-sign parser correction
 
 Review reproduced acceptance of malformed `+-1` and `+-1e2` by the original
@@ -143,8 +135,7 @@ cases include `+-1`, `+-1e2`, `++1`, `--1`, and `+`; valid `+1.0e0` remains
 covered. This correction changes only CLI parsing, tests, and documentation.
 
 The correction is tested from an isolated archive of `cf2bf33` with only these
-three CLI/test/documentation changes and the pinned ggml source. It does not
-include concurrent F16 runtime/converter edits in the shared worktree.
+three CLI/test/documentation changes and the pinned ggml source.
 The old binary reproduces both malformed signs with success status zero;
 the extended harness fails against it. The isolated corrected binary passes
 **39 process checks / 6 bytewise comparisons**, including valid positive and
@@ -152,20 +143,3 @@ negative signed exponents, all malformed-sign cases, CSV/JSON, tiny inference,
 and the existing bench contract. Final-binary CTest passes **1/1** and the
 /dev/full output-error probe returns 1. No redundant real fixture replay runs
 because runtime/C ABI source is exactly the reviewed baseline.
-
-Evidence under `timestral-native/m8-cli-sign`: `base.tar`, `ggml.tar`,
-`ggml-pin.txt`, `red-sign-harness.log`, `configure.log`, `build.log`,
-`green-harness.log`, `green-ctest.log`, `output-failure.log`, `tested-source.tar`,
-`before.json`, and `after.json`. Source archive, CLI, and shared-library hashes
-match before/after testing. The tested archive precedes this results paragraph;
-implementation and test content match the committed fix.
-
-Archive-build metadata caveat: configure prints ggml commit `be955f52d` because
-Git discovery escapes the extracted archive and finds the surrounding control
-repository. This is misleading build metadata, not the tested vendor revision.
-All **1962 vendor blob IDs**, archive files, extracted files, and the vendor
-portion of the hash-pinned tested-source archive match actual submodule commit
-`e705c5fed490514458bdd2eaddc43bd098fcce9b` exactly. The separate vendor archive
-SHA-256 is `93ff424a3c5b1978df60bc3a4e0436ca4bfdc0f8223361c11df28cbeffff3fb0`.
-`vendor-blob-manifest.json` and `vendor-verification.json` preserve this check.
-No different ggml source is tested; no rebuild is needed for this metadata audit.
