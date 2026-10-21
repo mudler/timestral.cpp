@@ -70,7 +70,13 @@ build-quant/examples/cli/timestral-cli quantize input-f32.gguf \
 ```
 
 The tool requires OpenSSL Crypto development files. Synthetic converter, writer,
-and CLI tests pass, but the real **79×6/474-call quality matrix is NOTRUN**.
-Retained real reduced models remain on URI-lineage HOLD; storage diagnostics do
-not establish quality or cohort acceptance. See [quantization](docs/quantization.md).
+and CLI tests pass. The [209M quality matrix](docs/quantization-209m-result.md)
+completes **79×6/474 calls with 79 fresh F32 anchors**, but overall quality **FAILS**.
+Q8_0 mean normalized error 0.005657737 exceeds 0.005; its absolute WQL change
+0.0411646% passes the 1% bound. F16 bounds and strict mean ordering pass.
+The final status is execution1/pin0, not M7 completion.
+A fresh coherent cohort resolves the historical URI mismatch without changing
+validator policy; the original mixed cohort's HOLD remains historical evidence.
+See [coherent F32 replay](docs/coherent-f32-replay.md) and
+[quantization contracts](docs/quantization.md).
 Do not overwrite accepted inputs or infer permission to redistribute weights.

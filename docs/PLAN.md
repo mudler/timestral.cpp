@@ -1221,12 +1221,18 @@ docs/PLAN.md  docs/conversion.md  docs/parity.md  docs/quantization.md  docs/ben
   `eval_quant.py`):** max and mean error in normalized space (G4.3 metric); relative change
   of the mean weighted quantile loss and of MASE computed against held-out ground truth.
   See [the evaluation design](quantization.md) for truth construction, formulas, degenerate
-  values, coverage, and aggregation. The frozen mappings and recorded protocol are implemented; real 474-call quality remains NOTRUN on URI-lineage HOLD.
+  values, coverage, and aggregation. The frozen mappings and recorded protocol are implemented.
+  The [209M recorded result](quantization-209m-result.md) completes 79×6/474 calls
+  with 79 fresh same-profile F32 anchors: execution1/pin0, overall quality FAIL.
+  Q8_0 mean 0.005657737 exceeds 0.005; absolute WQL change 0.0411646% passes 1%.
+  F16 bounds and strict mean ordering pass; M7 remains incomplete.
 - **Command:** `ctest --test-dir build -R test_quant --output-on-failure` and
   `$VENV/bin/python scripts/record_quant_matrix.py --driver build/examples/eval-driver/timestral-eval-driver --models $TIMESTRAL_WORK/models.json --build-sidecar $TIMESTRAL_WORK/build-sidecar.json --output $TIMESTRAL_WORK/records`, then
   `$VENV/bin/python scripts/eval_quant.py --manifest $TIMESTRAL_WORK/records/manifest.json --report $TIMESTRAL_WORK/report.json`.
   Build the driver with `TIMESTRAL_BUILD_EVAL_DRIVER=ON` and exact runtime/source identities.
-  These commands require prior complete cohort admission; the current URI mismatch remains HOLD.
+  These commands require prior complete cohort admission.
+  The [fresh coherent cohort](coherent-f32-replay.md) resolves the historical URI
+  mismatch without a validator exception; the old mixed cohort remains on HOLD.
 - **Acceptance:** `f16`: mean normalized error <= 1e-3, quantile-loss change <= 0.5%;
   `q8_0`: mean normalized error <= 5e-3, quantile-loss change <= 1%; the error grows
   monotonically f32 < f16 < q8_0 < q6_k < q5_k < q4_k; sizes and numbers in
