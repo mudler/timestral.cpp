@@ -15,8 +15,31 @@
 #endif
 namespace ts {
 #ifdef TS_LINEAR_AVX2
-// Callback-local storage: one [K,8] tile, reused across all owned rows.
-// Allocation failure leaves the original path available without shared state.
+// Fixed row count per tile so the accumulators stay in registers. Each row
+// keeps its own ascending-K FMA chain per 192-wide panel and the same panel adds.
+template<int R>
+__attribute__((target("avx2,fma")))
+static void linear_tile(const float* packed,const float* x,int64_t xstride,const float* b,float* y,
+                        int64_t ystride,int64_t k,int64_t col,int64_t n) {
+    __m256 sum[R];
+    for(int i=0;i<R;++i)sum[i]=_mm256_setzero_ps();
+    for(int64_t start=0;start<k;start+=192) {
+        __m256 panel[R];
+        for(int i=0;i<R;++i)panel[i]=_mm256_setzero_ps();
+        const int64_t stop=std::min(k,start+192);
+        for(int64_t j=start;j<stop;++j) {
+            __m256 weight=_mm256_loadu_ps(packed+j*8);
+            for(int i=0;i<R;++i)
+                panel[i]=_mm256_fmadd_ps(weight,_mm256_set1_ps(x[i*xstride+j]),panel[i]);
+        }
+        for(int i=0;i<R;++i)sum[i]=_mm256_add_ps(sum[i],panel[i]);
+    }
+    for(int i=0;i<R;++i) {
+        if(b)sum[i]=_mm256_add_ps(sum[i],_mm256_loadu_ps(b+col));
+        _mm256_storeu_ps(y+i*ystride+col,sum[i]);
+    }
+    (void)n;
+}
 __attribute__((target("avx2,fma")))
 static bool linear_packed(const float* w,const float* x,const float* b,float* y,
                           int64_t k,int64_t n,int64_t rows,int ith,int nth) {
@@ -24,27 +47,19 @@ static bool linear_packed(const float* w,const float* x,const float* b,float* y,
        uint64_t(k)>std::numeric_limits<size_t>::max()/(8*sizeof(float)))return false;
     std::unique_ptr<float[]> packed(new(std::nothrow) float[size_t(k)*8]);
     if(!packed)return false;
+    constexpr int64_t TILE=8;
     for(int64_t col=0;col+8<=n;col+=8) {
         for(int64_t j=0;j<k;++j)for(int lane=0;lane<8;++lane)
             packed[size_t(j)*8+lane]=w[(col+lane)*k+j];
-        for(int64_t row=ith;row<rows;row+=int64_t(4)*nth) {
-            const int count=int(std::min<int64_t>(4,(rows-1-row)/nth+1));
-            __m256 sum[4]={_mm256_setzero_ps(),_mm256_setzero_ps(),
-                           _mm256_setzero_ps(),_mm256_setzero_ps()};
-            for(int64_t start=0;start<k;start+=192) {
-                __m256 panel[4]={_mm256_setzero_ps(),_mm256_setzero_ps(),
-                                 _mm256_setzero_ps(),_mm256_setzero_ps()};
-                for(int64_t j=start;j<std::min(k,start+192);++j) {
-                    __m256 weight=_mm256_loadu_ps(packed.get()+j*8);
-                    for(int lane=0;lane<count;++lane)
-                        panel[lane]=_mm256_fmadd_ps(weight,
-                            _mm256_set1_ps(x[(row+int64_t(lane)*nth)*k+j]),panel[lane]);
-                }
-                for(int lane=0;lane<count;++lane)sum[lane]=_mm256_add_ps(sum[lane],panel[lane]);
-            }
-            for(int lane=0;lane<count;++lane) {
-                if(b)sum[lane]=_mm256_add_ps(sum[lane],_mm256_loadu_ps(b+col));
-                _mm256_storeu_ps(y+(row+int64_t(lane)*nth)*n+col,sum[lane]);
+        for(int64_t row=ith;row<rows;row+=TILE*nth) {
+            const int count=int(std::min<int64_t>(TILE,(rows-1-row)/nth+1));
+            const float* xr=x+row*k;float* yr=y+row*n+col-col;
+            const int64_t xs=int64_t(nth)*k,ys=int64_t(nth)*n;
+            const float* P=packed.get();
+            switch(count) {
+#define TS_TILE(R) case R: linear_tile<R>(P,xr,xs,b,yr,ys,k,col,n); break;
+                TS_TILE(8) TS_TILE(7) TS_TILE(6) TS_TILE(5) TS_TILE(4) TS_TILE(3) TS_TILE(2) TS_TILE(1)
+#undef TS_TILE
             }
         }
     }
@@ -278,10 +293,40 @@ static int64_t qk64_keys4(const float* q,const float* k,float* dots,
     return key;
 }
 #endif
+// 16 keys per pass: four independent double chains, ascending d, each add
+// of an exactly representable float*float product (fma == mul then add).
+__attribute__((target("avx2,fma")))
+static int64_t qk64_keys16(const float* q,const float* k,float* dots,
+                          int64_t keys,int64_t stride,int64_t hd,double* accumulators) {
+    int64_t key=0;
+    if(hd%4)return 0;
+    for(;key+16<=keys;key+=16){
+        __m256d acc[4]={_mm256_setzero_pd(),_mm256_setzero_pd(),_mm256_setzero_pd(),_mm256_setzero_pd()};
+        const float* base=k+key*stride;
+        for(int64_t d=0;d<hd;d+=4){
+            for(int g=0;g<4;++g){
+                const float* p=base+int64_t(g)*4*stride+d;
+                __m128 r0=_mm_loadu_ps(p),r1=_mm_loadu_ps(p+stride),r2=_mm_loadu_ps(p+2*stride),r3=_mm_loadu_ps(p+3*stride);
+                _MM_TRANSPOSE4_PS(r0,r1,r2,r3);
+                acc[g]=_mm256_fmadd_pd(_mm256_set1_pd(double(q[d])),_mm256_cvtps_pd(r0),acc[g]);
+                acc[g]=_mm256_fmadd_pd(_mm256_set1_pd(double(q[d+1])),_mm256_cvtps_pd(r1),acc[g]);
+                acc[g]=_mm256_fmadd_pd(_mm256_set1_pd(double(q[d+2])),_mm256_cvtps_pd(r2),acc[g]);
+                acc[g]=_mm256_fmadd_pd(_mm256_set1_pd(double(q[d+3])),_mm256_cvtps_pd(r3),acc[g]);
+            }
+        }
+        for(int g=0;g<4;++g){
+            if(accumulators)_mm256_storeu_pd(accumulators+key+g*4,acc[g]);
+            _mm_storeu_ps(dots+key+g*4,_mm256_cvtpd_ps(acc[g]));
+        }
+    }
+    return key;
+}
 void detail::qk64_dots(const float* q,const float* k,float* out,int64_t keys,int64_t stride,int64_t hd,bool force_scalar,double* accumulators) {
     int64_t first=0;
 #ifdef TS_LINEAR_AVX2
-    if(!force_scalar && __builtin_cpu_supports("avx2"))first=qk64_keys4(q,k,out,keys,stride,hd,accumulators);
+    if(!force_scalar && __builtin_cpu_supports("avx2") && __builtin_cpu_supports("fma")){first=qk64_keys16(q,k,out,keys,stride,hd,accumulators);
+        first+=qk64_keys4(q,k+first*stride,out+first,keys-first,stride,hd,accumulators?accumulators+first:nullptr);}
+    else if(!force_scalar && __builtin_cpu_supports("avx2"))first=qk64_keys4(q,k,out,keys,stride,hd,accumulators);
 #endif
     for(int64_t j=first;j<keys;++j){double sum=0;for(int64_t d=0;d<hd;++d)sum+=double(q[d])*double(k[j*stride+d]);if(accumulators)accumulators[j]=sum;out[j]=float(sum);}
 }
