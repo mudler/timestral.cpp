@@ -24,6 +24,63 @@ Cases labelled `slow` (`ctx_cap`, `bench_32k`) run only with `--include-slow` or
 For a tiny checkpoint every layer is dumped; for the 209M model the `layers` field of the case
 lists the dumped layers (the last layer is always included).
 
+## Reference environment and the AVX2 pin
+
+The reference output depends on the CPU kernels that PyTorch selects at run time. On x86,
+scaled dot-product attention gives results that differ by up to about 2e-6 between the AVX2
+and the AVX-512 kernels. Reference files made on an AVX-512 machine are therefore not equal to
+files made on an AVX2 machine. To make the reference the same on every machine, generate it
+with the AVX2 kernels:
+
+```bash
+export ATEN_CPU_CAPABILITY=avx2
+export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
+export HF_HUB_OFFLINE=1 PYTHONDONTWRITEBYTECODE=1
+$VENV/bin/python -c "import torch; print(torch.__version__, torch.backends.cpu.get_cpu_capability())"
+```
+
+The last command must print `AVX2`. Without the variable, an AVX-512 machine prints `AVX512`.
+The generator stores the reported value as `env.cpu_capability`, so a file shows which kernels
+made it.
+
+Versions used for the reference of record:
+
+| Item | Value |
+|---|---|
+| PyTorch | 2.14.1+cpu (Python 3.12) |
+| Reference code (`timestral`) | `a534bdbd244d64f3d9d743f46c7bf6fc330ed4ff` |
+| Model weights (`mistralai/Timestral-209M`) | `9874d252ab0aae16f7f7c999f98f98d6ad7d8365` |
+| Threads | 1 (torch, MKL and OpenBLAS) |
+
+The tiny checkpoints come from `scripts/make_tiny_checkpoint.py` (with and without `--bias`).
+Generate all five modes for every case, the tiny suites included, with the commands above.
+
+With this pin, a set made on an AVX-512 machine and a set made on an AVX2 machine (stored with the same `env.torch` and `env.timestral_sha` values) were
+compared file by file (sha256). All 240 GGUF and JSON files of the tiny, tiny-bias and 209M
+suites and of the two extension sets matched, apart from `floors-summary.json`. That file
+holds only the last case that `compute_floors.py` handled, so it depends on the run order.
+
+The host gates compare `env.cpu_capability` and the glibc version of a baseline with those of
+the machine that runs the test, and they skip on a mismatch. A reference made with the AVX2
+pin therefore runs the host gates on machines whose CPU reports AVX2 as the best kernel
+level, and skips them on AVX-512 machines. Setting `TIMESTRAL_DIAG_ANY_HOST` in a diagnostic
+build that bypasses the host check is the only way to run them there. Do not use such a build
+for acceptance.
+
+### Known open gate failures
+
+Two gates of the extension sets fail on this reference. They are open items and no
+tolerance, floor or cap has been changed for them:
+
+| Gate | Case | Failing tensor | Error / tolerance |
+|---|---|---|---|
+| `test_encoder`, all-layer extension | `multi` | `neg.b0.layer.22.out`, free-running | 6.746e-05 / 6.024e-05 (1.12) |
+| `test_encoder`, all-layer extension | `known_cov` | `pos.b0.layer.4.out`, teacher-forced | 1.170e-05 / 1.170e-05 (just above 1.0) |
+
+The cause is the query-key product of attention. The C++ code computes it in binary64, and
+PyTorch computes it in F32. The two products differ by more than the tolerance that is
+derived from the reference floor at these tensors.
+
 ## Additive layer-22 reference for M2b
 
 The original `known_cov` case selects `[0,3,7,23]`. M2b requires time layers
