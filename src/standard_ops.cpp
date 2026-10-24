@@ -1,11 +1,13 @@
 #include "standard_ops.hpp"
 #include "common.hpp"
+#include <algorithm>
 #include <atomic>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
 namespace ts {
 namespace {
+constexpr int64_t kReducePanel = 192;
 std::atomic<int>& state() {
     // -1 = not yet resolved.
     static std::atomic<int> value{-1};
@@ -39,7 +41,23 @@ ggml_tensor* standard_linear(ggml_context* ctx, ggml_tensor* w, ggml_tensor* x, 
     if (!w || !x || x->type != GGML_TYPE_F32 || !ggml_is_contiguous(x) || x->ne[3] != 1 || w->ne[0] != x->ne[0] ||
         (bias && (bias->type != GGML_TYPE_F32 || ggml_nelements(bias) != w->ne[1])))
         throw Error("invalid standard linear layout");
-    auto y = ggml_mul_mat(ctx, w, x);
+    // The reference F32 GEMM reduces K in panels of kReducePanel with one
+    // accumulator chain per panel and adds the panels in order. A single
+    // mul_mat over all of K has a different (and, with outlier activations,
+    // noticeably different) rounding path, so contractions of K >= panel are
+    // split the same way. Short dots stay one mul_mat.
+    ggml_tensor* y = nullptr;
+    if (w->ne[0] < kReducePanel) {
+        y = ggml_mul_mat(ctx, w, x);
+    } else {
+        for (int64_t off = 0; off < w->ne[0]; off += kReducePanel) {
+            const int64_t n = std::min<int64_t>(kReducePanel, w->ne[0] - off);
+            auto wv = ggml_view_2d(ctx, w, n, w->ne[1], w->nb[1], size_t(off) * w->nb[0]);
+            auto xv = ggml_view_3d(ctx, x, n, x->ne[1], x->ne[2], x->nb[1], x->nb[2], size_t(off) * x->nb[0]);
+            auto part = ggml_mul_mat(ctx, wv, xv);
+            y = y ? ggml_add(ctx, y, part) : part;
+        }
+    }
     return bias ? ggml_add(ctx, y, bias) : y;
 }
 ggml_tensor* standard_rms_norm(ggml_context* ctx, ggml_tensor* x, ggml_tensor* scale, float eps) {
