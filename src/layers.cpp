@@ -40,24 +40,71 @@ static void linear_tile(const float* packed,const float* x,int64_t xstride,const
     }
     (void)n;
 }
+// Two adjacent eight-column packs share each activation broadcast. Every
+// output keeps its own panel chain, panel add, bias add and store.
+template<int R>
+__attribute__((target("avx2,fma")))
+static void linear_tile_pair(const float* packed0,const float* packed1,const float* x,int64_t xstride,
+                             const float* b,float* y,int64_t ystride,int64_t k,int64_t col) {
+    __m256 sum0[R],sum1[R];
+    for(int i=0;i<R;++i){sum0[i]=_mm256_setzero_ps();sum1[i]=_mm256_setzero_ps();}
+    for(int64_t start=0;start<k;start+=192) {
+        __m256 panel0[R],panel1[R];
+        for(int i=0;i<R;++i){panel0[i]=_mm256_setzero_ps();panel1[i]=_mm256_setzero_ps();}
+        const int64_t stop=std::min(k,start+192);
+        for(int64_t j=start;j<stop;++j) {
+            __m256 weight0=_mm256_loadu_ps(packed0+j*8),weight1=_mm256_loadu_ps(packed1+j*8);
+            for(int i=0;i<R;++i) {
+                __m256 activation=_mm256_set1_ps(x[i*xstride+j]);
+                panel0[i]=_mm256_fmadd_ps(weight0,activation,panel0[i]);
+                panel1[i]=_mm256_fmadd_ps(weight1,activation,panel1[i]);
+            }
+        }
+        for(int i=0;i<R;++i){sum0[i]=_mm256_add_ps(sum0[i],panel0[i]);sum1[i]=_mm256_add_ps(sum1[i],panel1[i]);}
+    }
+    for(int i=0;i<R;++i) {
+        if(b){sum0[i]=_mm256_add_ps(sum0[i],_mm256_loadu_ps(b+col));sum1[i]=_mm256_add_ps(sum1[i],_mm256_loadu_ps(b+col+8));}
+        _mm256_storeu_ps(y+i*ystride+col,sum0[i]);
+        _mm256_storeu_ps(y+i*ystride+col+8,sum1[i]);
+    }
+}
 __attribute__((target("avx2,fma")))
 static bool linear_packed(const float* w,const float* x,const float* b,float* y,
                           int64_t k,int64_t n,int64_t rows,int ith,int nth) {
     if(k<192 || n<8 || rows<32 ||
-       uint64_t(k)>std::numeric_limits<size_t>::max()/(8*sizeof(float)))return false;
-    std::unique_ptr<float[]> packed(new(std::nothrow) float[size_t(k)*8]);
+       uint64_t(k)>std::numeric_limits<size_t>::max()/(16*sizeof(float)))return false;
+    std::unique_ptr<float[]> packed(new(std::nothrow) float[size_t(k)*16]);
     if(!packed)return false;
-    constexpr int64_t TILE=8;
-    for(int64_t col=0;col+8<=n;col+=8) {
+    constexpr int64_t TILE=8,PAIR_TILE=4;
+    int64_t col=0;
+    for(;col+16<=n;col+=16) {
+        float* first=packed.get();float* second=first+k*8;
+        for(int64_t j=0;j<k;++j)for(int lane=0;lane<8;++lane) {
+            first[size_t(j)*8+lane]=w[(col+lane)*k+j];
+            second[size_t(j)*8+lane]=w[(col+8+lane)*k+j];
+        }
+        for(int64_t row=ith;row<rows;row+=PAIR_TILE*nth) {
+            const int count=int(std::min<int64_t>(PAIR_TILE,(rows-1-row)/nth+1));
+            const float* xr=x+row*k;
+            const int64_t xs=int64_t(nth)*k,ys=int64_t(nth)*n;
+            switch(count) {
+                case 4: linear_tile_pair<4>(first,second,xr,xs,b,y+row*n,ys,k,col); break;
+                case 3: linear_tile_pair<3>(first,second,xr,xs,b,y+row*n,ys,k,col); break;
+                case 2: linear_tile_pair<2>(first,second,xr,xs,b,y+row*n,ys,k,col); break;
+                case 1: linear_tile_pair<1>(first,second,xr,xs,b,y+row*n,ys,k,col); break;
+            }
+        }
+    }
+    for(;col+8<=n;col+=8) {
+        float* P=packed.get();
         for(int64_t j=0;j<k;++j)for(int lane=0;lane<8;++lane)
-            packed[size_t(j)*8+lane]=w[(col+lane)*k+j];
+            P[size_t(j)*8+lane]=w[(col+lane)*k+j];
         for(int64_t row=ith;row<rows;row+=TILE*nth) {
             const int count=int(std::min<int64_t>(TILE,(rows-1-row)/nth+1));
-            const float* xr=x+row*k;float* yr=y+row*n+col-col;
+            const float* xr=x+row*k;
             const int64_t xs=int64_t(nth)*k,ys=int64_t(nth)*n;
-            const float* P=packed.get();
             switch(count) {
-#define TS_TILE(R) case R: linear_tile<R>(P,xr,xs,b,yr,ys,k,col,n); break;
+#define TS_TILE(R) case R: linear_tile<R>(P,xr,xs,b,y+row*n,ys,k,col,n); break;
                 TS_TILE(8) TS_TILE(7) TS_TILE(6) TS_TILE(5) TS_TILE(4) TS_TILE(3) TS_TILE(2) TS_TILE(1)
 #undef TS_TILE
             }
