@@ -87,6 +87,11 @@ add_test(NAME test_refine_units COMMAND test_refine --unit)
 add_test(NAME test_refine_209m COMMAND test_refine --real)
 
 ts_add_test(test_forecast)
+# NORM gates of the standard-op graph; opt-in, not part of the bit-exact ladder.
+add_executable(test_standard_ops test_standard_ops.cpp)
+target_link_libraries(test_standard_ops PRIVATE timestral)
+target_include_directories(test_standard_ops PRIVATE ${PROJECT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_definitions(test_standard_ops PRIVATE TS_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 add_test(NAME test_forecast_units COMMAND test_forecast --unit)
 add_test(NAME test_forecast_209m COMMAND test_forecast --real)
 set_tests_properties(test_forecast_209m PROPERTIES LABELS "slow" SKIP_RETURN_CODE 77)
