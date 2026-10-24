@@ -69,11 +69,13 @@ for acceptance.
 
 ### Known open gate failures
 
-Two gates of the extension sets fail on this reference. They are open items and no
+Four gates fail on this reference under the official gate runs. They are open items and no
 tolerance, floor or cap has been changed for them:
 
 | Gate | Case | Failing tensor | Error / tolerance |
 |---|---|---|---|
+| `test_encoder`, canonical | `uni_one_patch` | `pos.b0.layer.5.out`, teacher-forced | 3.004e-06 / 2.867e-06 (1.048) |
+| `test_layer_time_variate`, canonical | `past_cov` | `pos.b0.layer.3.out` | 6.267e-06 / 4.558e-06 (1.375) |
 | `test_encoder`, all-layer extension | `multi` | `neg.b0.layer.22.out`, free-running | 6.746e-05 / 6.024e-05 (1.12) |
 | `test_encoder`, all-layer extension | `known_cov` | `pos.b0.layer.4.out`, teacher-forced | 1.170e-05 / 1.170e-05 (just above 1.0) |
 
