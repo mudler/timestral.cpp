@@ -27,7 +27,7 @@ static float activation_exp(float x) {
     return std::ldexp(1.f+std::fma(r*r,u,r),int(q));
 }
 void head_silu_f32(ggml_tensor* dst,int ith,int nth,void*){auto x=static_cast<const float*>(dst->src[0]->data);auto y=static_cast<float*>(dst->data);for(int64_t i=ith;i<ggml_nelements(dst);i+=nth)y[i]=x[i]/(1.f+activation_exp(-x[i]));}
-ggml_tensor* head_silu(ggml_context* ctx,ggml_tensor* x){ggml_tensor* args[]={x};return ggml_custom_4d(ctx,GGML_TYPE_F32,x->ne[0],x->ne[1],x->ne[2],1,args,1,head_silu_f32,1,nullptr);}
+ggml_tensor* head_silu(ggml_context* ctx,ggml_tensor* x){if(standard_ops())return ggml_silu(ctx,x);ggml_tensor* args[]={x};return ggml_custom_4d(ctx,GGML_TYPE_F32,x->ne[0],x->ne[1],x->ne[2],1,args,1,head_silu_f32,1,nullptr);}
 void head_linear_f32(ggml_tensor* dst,int ith,int nth,void*) {
  const auto w=static_cast<const float*>(dst->src[0]->data),x=static_cast<const float*>(dst->src[1]->data);
  auto y=static_cast<float*>(dst->data);const float* b=dst->src[2]?static_cast<const float*>(dst->src[2]->data):nullptr;const size_t K=dst->src[0]->ne[0],N=dst->ne[0];
@@ -41,11 +41,13 @@ void head_linear_f64_impl(ggml_tensor* dst,int ith,int nth,void*) {
 }
 ggml_tensor* precise_head_linear(ggml_context* ctx,const Model& m,const char* name,ggml_tensor* x){
  auto w=m.tensor(std::string(name)+".weight");if(w->type!=GGML_TYPE_F32)return reduced_projection(ctx,w,x,nullptr);
+ if(standard_ops())return standard_linear(ctx,w,x,nullptr);
  ggml_tensor* args[]={w,x};return ggml_custom_4d(ctx,GGML_TYPE_F32,w->ne[1],x->ne[1],x->ne[2],1,args,2,head_linear_f64_impl,1,nullptr);
 }
 ggml_tensor* head_linear(ggml_context* ctx,const Model& m,const char* name,ggml_tensor* x,bool bias=false){
  auto reduced=m.tensor(std::string(name)+".weight");
  if(reduced->type!=GGML_TYPE_F32)return reduced_projection(ctx,reduced,x,bias?m.tensor(std::string(name)+".bias"):nullptr);
+ if(standard_ops())return standard_linear(ctx,reduced,x,bias?m.tensor(std::string(name)+".bias"):nullptr);
  // Small reference SGEMM dots accumulate sequential F32 FMA, not double.
  if(x->ne[0]>=192)return affine(ctx,m,name,x,bias);
  auto w=m.tensor(std::string(name)+".weight");ggml_tensor* args[]={w,x,bias?m.tensor(std::string(name)+".bias"):nullptr};

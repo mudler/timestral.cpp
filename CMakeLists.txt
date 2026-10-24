@@ -18,6 +18,7 @@ set(TIMESTRAL_EVAL_RUNTIME_COMMIT "" CACHE STRING "Explicit evaluation runtime c
 set(TIMESTRAL_EVAL_SOURCE_SHA256 "" CACHE STRING "Explicit evaluation source snapshot SHA256")
 option(TIMESTRAL_BUILD_CLI    "Build timestral-cli" ON)
 option(TIMESTRAL_SHARED       "Build libtimestral as shared" OFF)
+option(TIMESTRAL_STANDARD_OPS "Default to the standard-ggml-op forecast graph (NORM-gated, GPU-capable) instead of the bit-exact CPU custom ops" OFF)
 option(TIMESTRAL_GGML_CUDA    "Forward GGML_CUDA" OFF)
 option(TIMESTRAL_GGML_METAL   "Forward GGML_METAL" OFF)
 option(TIMESTRAL_GGML_VULKAN  "Forward GGML_VULKAN" OFF)
@@ -64,7 +65,8 @@ set(TIMESTRAL_SRC
     src/encoder.cpp
     src/head.cpp
     src/predict_block.cpp
-    src/rope.cpp)
+    src/rope.cpp
+    src/standard_ops.cpp)
 
 # PyTorch materializes multiply/add separately at the scaler float32 boundaries.
 
@@ -82,6 +84,9 @@ set_target_properties(timestral PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(timestral PUBLIC include $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>)
 target_compile_definitions(timestral PRIVATE TIMESTRAL_VERSION="${TIMESTRAL_VERSION}")
 target_link_libraries(timestral PUBLIC ggml)
+if(TIMESTRAL_STANDARD_OPS)
+  target_compile_definitions(timestral PRIVATE TS_STANDARD_OPS_DEFAULT=1)
+endif()
 if(TIMESTRAL_BUILD_TESTS)
   target_compile_definitions(timestral PRIVATE TS_CALLBACK_TESTING)
 endif()

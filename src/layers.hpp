@@ -1,5 +1,6 @@
 #pragma once
 #include "model_loader.hpp"
+#include "standard_ops.hpp"
 namespace ts {
 struct ResidualOutput { ggml_tensor* hidden; ggml_tensor* output; };
 ResidualOutput residual_block(ggml_context* ctx, const Model& model, ggml_tensor* x);
