@@ -45,6 +45,11 @@ ggml_backend_buffer_t backend_buffer_from_mapping(MappedFile& file);
 #include "graph_lifecycle.hpp"
 #include "callback_context.hpp"
 namespace ts {
+class GraphRunner;
+// A one-element F32 tensor holding `value`, owned by the runner that is building `ctx`.
+// The runner writes it when the graph is allocated, so graph builders can use exact
+// scalar operands (for example a division by D) without a host upload step.
+ggml_tensor* graph_constant(ggml_context* ctx, float value);
 // Owns metadata per invocation and a persistent backend allocator across shapes.
 // Not reentrant. Graph tensors are invalidated by begin(); read() returns owned data.
 class GraphRunner {
@@ -60,6 +65,8 @@ public:
     std::vector<float> read(ggml_tensor* t) const;
 private:
     friend CallbackContext* register_callback(ggml_context*,const std::vector<ggml_tensor*>&,size_t);
+    friend ggml_tensor* graph_constant(ggml_context*,float);
+    std::vector<std::pair<ggml_tensor*,float>> constants_;
     lifecycle::State state_;
     CallbackStatus callback_status_;
     std::vector<std::unique_ptr<CallbackContext>> callbacks_;

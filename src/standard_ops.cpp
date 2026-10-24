@@ -1,5 +1,6 @@
 #include "standard_ops.hpp"
 #include "common.hpp"
+#include "backend.hpp"
 #include <algorithm>
 #include <atomic>
 #include <cmath>
@@ -60,8 +61,52 @@ ggml_tensor* standard_linear(ggml_context* ctx, ggml_tensor* w, ggml_tensor* x, 
     }
     return bias ? ggml_add(ctx, y, bias) : y;
 }
+// The reference sums x*x in F32 with a fixed cascade: 32 independent lanes
+// (four groups of eight) accumulate group after group, partial lane sets are
+// merged in power-of-two blocks, then the lanes are folded in a fixed order.
+// With outlier activations the output error is dominated by the last bit of
+// 1/sqrt(mean + eps), so the order of this sum matters. ggml_rms_norm sums in
+// double, which is more exact but rounds differently. This builds the same
+// cascade from element-wise operations, whose results are exact IEEE F32 on
+// every backend.
 ggml_tensor* standard_rms_norm(ggml_context* ctx, ggml_tensor* x, ggml_tensor* scale, float eps) {
-    return ggml_mul(ctx, ggml_rms_norm(ctx, x, eps), scale);
+    const int64_t D = x->ne[0];
+    if (D % 32 != 0 || D < 32 || !ggml_is_contiguous(x))
+        return ggml_mul(ctx, ggml_rms_norm(ctx, x, eps), scale);
+    const int64_t G = D / 32;
+    auto sq = ggml_sqr(ctx, x);
+    auto group = [&](int64_t g) {
+        return ggml_view_3d(ctx, sq, 32, x->ne[1], x->ne[2], sq->nb[1], sq->nb[2], size_t(g) * 32 * sizeof(float));
+    };
+    ggml_tensor* acc[4] = {nullptr, nullptr, nullptr, nullptr}; // null is an all-zero lane set
+    auto accumulate = [&](ggml_tensor*& into, ggml_tensor* v) { into = into ? ggml_add(ctx, into, v) : v; };
+    int log = 0;
+    for (int64_t n = G - 1; n > 0; n >>= 1) ++log;
+    const int power = std::max(4, log / 4);
+    const int64_t step = int64_t(1) << power, mask = step - 1;
+    int64_t i = 0;
+    while (i + step <= G) {
+        for (int64_t j = 0; j < step; ++j, ++i) accumulate(acc[0], group(i));
+        for (int j = 1; j < 4; ++j) {
+            if (acc[j - 1]) accumulate(acc[j], acc[j - 1]);
+            acc[j - 1] = nullptr;
+            if (i & (mask << (j * power))) break;
+        }
+    }
+    for (; i < G; ++i) accumulate(acc[0], group(i));
+    for (int j = 1; j < 4; ++j) if (acc[j]) accumulate(acc[0], acc[j]);
+    // Fold the four groups of eight lanes, then add the eight lanes in order.
+    auto lanes = [&](ggml_tensor* t, int64_t count, int64_t first) {
+        return ggml_view_3d(ctx, t, count, t->ne[1], t->ne[2], t->nb[1], t->nb[2], size_t(first) * sizeof(float));
+    };
+    auto lane8 = lanes(acc[0], 8, 0);
+    for (int k = 1; k < 4; ++k) lane8 = ggml_add(ctx, lane8, lanes(acc[0], 8, 8 * k));
+    auto sum = lanes(lane8, 1, 0);
+    for (int l = 1; l < 8; ++l) sum = ggml_add(ctx, sum, lanes(lane8, 1, l));
+    auto mean = ggml_div(ctx, sum, graph_constant(ctx, float(D)));
+    auto root = ggml_sqrt(ctx, ggml_scale_bias(ctx, mean, 1.0f, eps));
+    auto inv = ggml_div(ctx, ggml_repeat(ctx, graph_constant(ctx, 1.0f), root), root);
+    return ggml_mul(ctx, ggml_mul(ctx, x, inv), scale);
 }
 ggml_tensor* standard_attention(ggml_context* ctx, ggml_tensor* q, ggml_tensor* k, ggml_tensor* v, ggml_tensor* mask) {
     const int64_t hd = q->ne[0], H = q->ne[1], S = q->ne[2], B = q->ne[3];

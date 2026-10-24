@@ -101,8 +101,14 @@ CallbackContext* register_callback(ggml_context* ctx,const std::vector<ggml_tens
  auto context=std::make_unique<CallbackContext>();context->status=&building_runner->callback_status_;context->split=split;context->tensors=tensors;
  auto result=context.get();building_runner->callbacks_.push_back(std::move(context));return result;
 }
+ggml_tensor* graph_constant(ggml_context* ctx,float value){
+ auto found=building_runners.find(ctx);auto runner=found==building_runners.end()?nullptr:found->second;
+ if(!runner||runner->ctx_!=ctx||!std::holds_alternative<lifecycle::Building>(runner->state_.phase))throw Error("graph constant requires owning GraphRunner");
+ for(auto& c:runner->constants_)if(std::memcmp(&c.second,&value,sizeof value)==0)return c.first;
+ auto t=ggml_new_tensor_1d(ctx,GGML_TYPE_F32,1);ggml_set_input(t);runner->constants_.emplace_back(t,value);return t;
+}
 ggml_context* GraphRunner::begin() {
-    transition(lifecycle::Event::Begin);callbacks_.clear();callback_status_.reset();if(ctx_)building_runners.erase(ctx_);
+    transition(lifecycle::Event::Begin);constants_.clear();callbacks_.clear();callback_status_.reset();if(ctx_)building_runners.erase(ctx_);
     if (ctx_) ggml_free(ctx_);
     ctx_ = nullptr; graph_ = nullptr; allocated_ = false; computed_ = false;
     ggml_init_params p{capacity_*ggml_tensor_overhead()+ggml_graph_overhead_custom(capacity_,false), nullptr, true};
@@ -122,6 +128,7 @@ void GraphRunner::allocate(const std::vector<ggml_tensor*>& outputs) {
     try {
       for(auto t:outputs){ggml_set_output(t);ggml_build_forward_expand(graph_,t);}
       if(!ggml_gallocr_reserve(allocator_,graph_)||!ggml_gallocr_alloc_graph(allocator_,graph_))throw Error("cannot allocate graph buffers");
+      for(auto& c:constants_)if(c.first->buffer)ggml_backend_tensor_set(c.first,&c.second,0,sizeof(float));
       transition(lifecycle::Event::Allocate);allocated_=true;
     }catch(...){state_=lifecycle::reduce(state_,lifecycle::Event::AllocationFail).state;throw;}
 }
