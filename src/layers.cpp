@@ -481,7 +481,104 @@ static void sdpa_impl(ggml_tensor* dst,int ith,int nth,void* split_data,detail::
         for(int64_t d=first;d<hd;++d){float y=0;for(int64_t j=0;j<keys;++j){if(hd<16)y+=p[j]*V[(r*S+j)*D+h*hd+d];else y=std::fma(p[j],V[(r*S+j)*D+h*hd+d],y);}Y[(r*S+t)*D+h*hd+d]=float(y)*reciprocal;}
     }
 }
+#ifdef TS_LINEAR_AVX2
+// Two queries share each key load. Every dot keeps the qk64_keys16 chains
+// (four key groups, ascending d, one double FMA per product), and the
+// remaining keys follow the same qk64_dots path as the single-query code.
+__attribute__((target("avx2,fma")))
+static int64_t qk64_keys16_pair(const float* q0,const float* q1,const float* k,float* dots0,float* dots1,
+                                int64_t keys,int64_t stride,int64_t hd) {
+    int64_t key=0;
+    if(hd%4)return 0;
+    for(;key+16<=keys;key+=16){
+        __m256d acc0[4]={_mm256_setzero_pd(),_mm256_setzero_pd(),_mm256_setzero_pd(),_mm256_setzero_pd()};
+        __m256d acc1[4]={_mm256_setzero_pd(),_mm256_setzero_pd(),_mm256_setzero_pd(),_mm256_setzero_pd()};
+        const float* base=k+key*stride;
+        for(int64_t d=0;d<hd;d+=4){
+            for(int g=0;g<4;++g){
+                const float* p=base+int64_t(g)*4*stride+d;
+                __m128 r0=_mm_loadu_ps(p),r1=_mm_loadu_ps(p+stride),r2=_mm_loadu_ps(p+2*stride),r3=_mm_loadu_ps(p+3*stride);
+                _MM_TRANSPOSE4_PS(r0,r1,r2,r3);
+                const __m256d c0=_mm256_cvtps_pd(r0),c1=_mm256_cvtps_pd(r1),c2=_mm256_cvtps_pd(r2),c3=_mm256_cvtps_pd(r3);
+                acc0[g]=_mm256_fmadd_pd(_mm256_set1_pd(double(q0[d])),c0,acc0[g]);
+                acc0[g]=_mm256_fmadd_pd(_mm256_set1_pd(double(q0[d+1])),c1,acc0[g]);
+                acc0[g]=_mm256_fmadd_pd(_mm256_set1_pd(double(q0[d+2])),c2,acc0[g]);
+                acc0[g]=_mm256_fmadd_pd(_mm256_set1_pd(double(q0[d+3])),c3,acc0[g]);
+                acc1[g]=_mm256_fmadd_pd(_mm256_set1_pd(double(q1[d])),c0,acc1[g]);
+                acc1[g]=_mm256_fmadd_pd(_mm256_set1_pd(double(q1[d+1])),c1,acc1[g]);
+                acc1[g]=_mm256_fmadd_pd(_mm256_set1_pd(double(q1[d+2])),c2,acc1[g]);
+                acc1[g]=_mm256_fmadd_pd(_mm256_set1_pd(double(q1[d+3])),c3,acc1[g]);
+            }
+        }
+        for(int g=0;g<4;++g){
+            _mm_storeu_ps(dots0+key+g*4,_mm256_cvtpd_ps(acc0[g]));
+            _mm_storeu_ps(dots1+key+g*4,_mm256_cvtpd_ps(acc1[g]));
+        }
+    }
+    return key;
+}
+// Same key partition as detail::qk64_dots (AVX2 path, no accumulators) for two queries.
+static void qk64_dots_pair(const float* q0,const float* q1,const float* k,float* out0,float* out1,
+                           int64_t keys,int64_t stride,int64_t hd) {
+    const int64_t first=qk64_keys16_pair(q0,q1,k,out0,out1,keys,stride,hd);
+    const float* queries[2]={q0,q1};
+    float* outs[2]={out0,out1};
+    for(int c=0;c<2;++c){
+        const int64_t f=first+qk64_keys4(queries[c],k+first*stride,outs[c]+first,keys-first,stride,hd,nullptr);
+        for(int64_t j=f;j<keys;++j){double sum=0;for(int64_t d=0;d<hd;++d)sum+=double(queries[c][d])*double(k[j*stride+d]);outs[c][j]=float(sum);}
+    }
+}
+// Non-legacy SDPA. Units are (row, head, query pair); a pair shares its key
+// loads when both queries see the same key count. Each query keeps its own
+// scale, mask, max, exp, sum and value contraction, in the original order.
+static void sdpa_pair_impl(ggml_tensor* dst,int ith,int nth,void* split_data) {
+    const int64_t split=reinterpret_cast<uintptr_t>(split_data);
+    auto q=dst->src[0],k=dst->src[1],v=dst->src[2],mask=dst->src[3];
+    auto Q=(const float*)q->data,K=(const float*)k->data,V=(const float*)v->data,M=(const float*)mask->data;
+    auto Y=(float*)dst->data;
+    const int64_t H=q->ne[1],hd=q->ne[0],S=q->ne[2],D=H*hd,R=q->ne[3];
+    const int64_t pairs=(S+1)/2;
+    std::vector<float> logits0(S),logits1(S),p(S);
+    float* logits[2]={logits0.data(),logits1.data()};
+    for(int64_t unit=ith;unit<R*H*pairs;unit+=nth) {
+        const int64_t h=unit%H,pair=unit/H%pairs,r=unit/(H*pairs);
+        const int64_t t0=2*pair,count=std::min<int64_t>(2,S-t0);
+        int64_t keys[2]={0,0};
+        for(int64_t c=0;c<count;++c){const int64_t t=t0+c;keys[c]=(split && t<split)?split:S;}
+        if(count==2 && keys[0]==keys[1])
+            qk64_dots_pair(Q+(r*S+t0)*D+h*hd,Q+(r*S+t0+1)*D+h*hd,K+r*S*D+h*hd,logits[0],logits[1],keys[0],D,hd);
+        else for(int64_t c=0;c<count;++c)
+            detail::qk64_dots(Q+(r*S+t0+c)*D+h*hd,K+r*S*D+h*hd,logits[c],keys[c],D,hd,false,nullptr);
+        for(int64_t c=0;c<count;++c) {
+            const int64_t t=t0+c,keyc=keys[c];
+            float* lg=logits[c];
+            float mx=-INFINITY;
+            for(int64_t j=0;j<keyc;++j) {
+                lg[j]=lg[j]*float(1/std::sqrt(double(hd)))+M[(r*S+t)*S+j];
+                mx=std::max(mx,lg[j]);
+            }
+            float sums[8]={};int64_t end=keyc/8*8;
+            for(int64_t j=0;j<keyc;++j){p[j]=j<end?attention_exp(lg[j]-mx):float(std::exp(double(lg[j]-mx)));if(j<end)sums[j%8]+=p[j];}
+            float a0=sums[0]+sums[4],a1=sums[1]+sums[5],a2=sums[2]+sums[6],a3=sums[3]+sums[7];
+            float sum=(a0+a2)+(a1+a3);for(int64_t j=end;j<keyc;++j)sum+=p[j];
+            // CPU flash reference normalizes after the value contraction, not
+            // each probability before it. Preserve that rounding boundary.
+            float reciprocal=1.0f/float(sum);
+            int64_t first=0;
+            if(hd>=16)
+                first=attention_values(p.data(),V+r*S*D+h*hd,Y+(r*S+t)*D+h*hd,keyc,D,hd,reciprocal);
+            for(int64_t d=first;d<hd;++d){float y=0;for(int64_t j=0;j<keyc;++j){if(hd<16)y+=p[j]*V[(r*S+j)*D+h*hd+d];else y=std::fma(p[j],V[(r*S+j)*D+h*hd+d],y);}Y[(r*S+t)*D+h*hd+d]=float(y)*reciprocal;}
+        }
+    }
+}
+#endif
 void detail::sdpa_f32(ggml_tensor* dst,int ith,int nth,void* split_data) {
+#ifdef TS_LINEAR_AVX2
+    if(__builtin_cpu_supports("avx2") && __builtin_cpu_supports("fma")) {
+        sdpa_pair_impl(dst,ith,nth,split_data);
+        return;
+    }
+#endif
     sdpa_impl(dst,ith,nth,split_data,nullptr,false);
 }
 void detail::sdpa_f32_scalar(ggml_tensor* dst,int ith,int nth,void* split_data) {
