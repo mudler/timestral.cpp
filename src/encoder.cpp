@@ -5,8 +5,11 @@ namespace ts {
 static size_t encoder_capacity(const Model& model) {
     // Bound graph metadata before ggml construction (including views and leaves).
     const size_t n=model.config().n_layers;
-    if(!n || n>(1000000-4096)/512) throw Error("encoder graph capacity exceeded");
-    return 4096+512*n;
+    // The standard-op graph splits long contractions into panels and builds the
+    // RMS-norm reduction from element-wise nodes, so a layer needs more nodes.
+    constexpr size_t per_layer=1024;
+    if(!n || n>(1000000-4096)/per_layer) throw Error("encoder graph capacity exceeded");
+    return 4096+per_layer*n;
 }
 Encoder::Encoder(const Model& model) : model_(model), runner_(encoder_capacity(model)) {}
 Embedding Encoder::embed(const std::vector<float>& x,const std::vector<int8_t>& observed,size_t rows,size_t length) {

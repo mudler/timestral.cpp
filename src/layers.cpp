@@ -183,6 +183,7 @@ ResidualOutput residual_block(ggml_context* ctx, const Model& m, ggml_tensor* x)
         auto weight=m.tensor(w), bias=m.tensor(b);
         if(weight->ne[0]!=input->ne[0] || bias->ne[0]!=weight->ne[1] || ggml_nelements(bias)!=bias->ne[0]) throw Error("invalid residual weight/bias dimensions");
         if(weight->type!=GGML_TYPE_F32)return reduced_projection(ctx,weight,input,bias);
+        if(standard_ops())return standard_linear(ctx,weight,input,bias);
         ggml_tensor* args[]={weight,input,bias};
         return ggml_custom_4d(ctx,GGML_TYPE_F32,weight->ne[1],input->ne[1],input->ne[2],1,args,3,detail::linear_f32,1,nullptr);
     };
@@ -207,6 +208,7 @@ ggml_tensor* affine(ggml_context* ctx,const Model& m,const std::string& base,ggm
     auto w=m.tensor(base+".weight"); auto b=bias?m.tensor(base+".bias"):nullptr;
     if(x->type!=GGML_TYPE_F32 || !ggml_is_contiguous(x) || x->ne[3]!=1 || w->ne[0]!=x->ne[0] || (b && ggml_nelements(b)!=w->ne[1]))throw Error("invalid affine layout");
     if(w->type!=GGML_TYPE_F32)return reduced_projection(ctx,w,x,b);
+    if(standard_ops())return standard_linear(ctx,w,x,b);
     ggml_tensor* args[]={w,x,b};
     return ggml_custom_4d(ctx,GGML_TYPE_F32,w->ne[1],x->ne[1],x->ne[2],1,args,b?3:2,detail::linear_f32,1,nullptr);
 }
@@ -243,6 +245,7 @@ static void rms_f32(ggml_tensor* dst,int ith,int nth,void* userdata) {
 }
 ggml_tensor* rms_norm(ggml_context* ctx,ggml_tensor* x,ggml_tensor* scale,float eps) {
     if(!x || !scale || !ggml_is_contiguous(x) || x->type!=GGML_TYPE_F32 || scale->ne[0]!=x->ne[0] || ggml_nelements(scale)!=x->ne[0] || !(eps>0))throw Error("invalid RMSNorm layout");
+    if(standard_ops())return standard_rms_norm(ctx,x,scale,eps);
     uintptr_t bits=0;std::memcpy(&bits,&eps,sizeof(eps));auto data=reinterpret_cast<void*>(bits);ggml_tensor* args[]={x,scale};
     return ggml_custom_4d(ctx,GGML_TYPE_F32,x->ne[0],x->ne[1],x->ne[2],1,args,2,rms_f32,1,data);
 }
@@ -594,6 +597,7 @@ ggml_tensor* attention_time(ggml_context* ctx,ggml_tensor* q,ggml_tensor* k,ggml
     if(!q || !k || !v || !mask || !ggml_are_same_shape(q,k) || !ggml_are_same_shape(q,v) || mask->ne[0]!=q->ne[2] || mask->ne[1]!=q->ne[2] || mask->ne[2]!=q->ne[3])throw Error("invalid SDPA layout");
     for(auto t:{q,k,v,mask})if(t->type!=GGML_TYPE_F32 || !ggml_is_contiguous(t))throw Error("invalid SDPA type/strides");
     if(split>size_t(q->ne[2]) || mask->ne[3]!=1)throw Error("invalid SDPA mask rank");
+    if(standard_ops())return standard_attention(ctx,q,k,v,mask);
 #ifdef TS_STANDALONE_MKL
     return standalone_sdpa(ctx,q,k,v,mask,split);
 #endif
@@ -626,6 +630,7 @@ static void sigmoid_f32(ggml_tensor* dst,int ith,int nth,void*) {
     for(int64_t i=ith;i<ggml_nelements(dst);i+=nth)y[i]=1.0f/(1.0f+activation_exp(-x[i]));
 }
 ggml_tensor* sigmoid(ggml_context* ctx,ggml_tensor* x) {
+    if(standard_ops())return ggml_sigmoid(ctx,x);
     ggml_tensor* args[]={x};return ggml_custom_4d(ctx,GGML_TYPE_F32,x->ne[0],x->ne[1],x->ne[2],x->ne[3],args,1,sigmoid_f32,1,nullptr);
 }
 static void silu_f32(ggml_tensor* dst,int ith,int nth,void*) {
@@ -633,6 +638,7 @@ static void silu_f32(ggml_tensor* dst,int ith,int nth,void*) {
     for(int64_t i=ith;i<ggml_nelements(dst);i+=nth)y[i]=x[i]/(1.0f+activation_exp(-x[i]));
 }
 static ggml_tensor* silu_graph(ggml_context* ctx,ggml_tensor* x) {
+    if(standard_ops())return ggml_silu(ctx,x);
     ggml_tensor* args[]={x};return ggml_custom_4d(ctx,GGML_TYPE_F32,x->ne[0],x->ne[1],x->ne[2],x->ne[3],args,1,silu_f32,1,nullptr);
 }
 ggml_tensor* swiglu(ggml_context* ctx,const Model& m,const std::string& base,ggml_tensor* x) {
