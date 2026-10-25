@@ -1,15 +1,14 @@
 // Bitwise test: device (or emulated) exact-order linear vs the CPU reference.
-// Inputs match the CPU proof test: seed 11, same shapes and generation order.
+// Inputs come from the shared splitmix64 generator (shared_inputs.hpp), seed 11.
 // Exit code is nonzero on any mismatch.
 #include "linear_exact_gpu.hpp"
 #include "linear_exact_ref.hpp"
+#include "shared_inputs.hpp"
 #include <cstring>
-#include <random>
 #include <vector>
 
 int main() {
-    std::mt19937 rng(11);
-    std::normal_distribution<float> g(0, 1);
+    Gen g(11);
     long total = 0, bad = 0, cases = 0;
     for (int k : {768, 2048, 2304, 4096})
     for (int n : {1, 7, 8, 9, 15, 17, 768, 2047, 2048, 2304, 4096})
@@ -17,9 +16,10 @@ int main() {
     for (int outl = 0; outl < 2; ++outl) {
         std::vector<float> w((size_t)k * n), x((size_t)k * rows), b(n);
         std::vector<float> y1((size_t)n * rows), y2(y1);
-        for (auto& v : w) v = g(rng) * 0.05f;
-        for (auto& v : b) v = g(rng);
-        for (size_t i = 0; i < x.size(); ++i) { x[i] = g(rng); if (outl && i % k == 5) x[i] *= 100.f; }
+        for (auto& v : w) v = g.next() * 0.05f;
+        for (auto& v : b) v = g.next();
+        for (size_t i = 0; i < x.size(); ++i) { x[i] = g.next(); if (outl && i % k == 5) x[i] *= 100.f; }
+        if (cases == 0) std::printf("input checksum (sum of first 64 w, first case): %a\n", input_checksum(w.data()));
         for (int bias = 0; bias < 2; ++bias) {
             const float* bp = bias ? b.data() : nullptr;
             linear_exact_gpu(w.data(), x.data(), bp, y1.data(), k, n, rows);

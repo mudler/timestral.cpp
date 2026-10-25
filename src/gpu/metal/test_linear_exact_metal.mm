@@ -4,6 +4,7 @@
 #import <Foundation/Foundation.h>
 #import <Metal/Metal.h>
 #include "../linear_exact_ref.hpp"
+#include "../shared_inputs.hpp"
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -49,20 +50,6 @@ kernel void ts_probe(device const float* in [[buffer(0)]], device float* r [[buf
     r[2] = in[3] * in[4];
 }
 )MSL";
-
-// Platform-independent generator: splitmix64, seed 11. Float = ((h >> 40) - 2^23) / 2^23
-// is exact: uniform in [-1, 1) on a 2^-23 grid. Identical on every platform.
-struct Gen {
-    uint64_t s;
-    explicit Gen(uint64_t seed) : s(seed) {}
-    float next() {
-        uint64_t z = (s += 0x9E3779B97F4A7C15ULL);
-        z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ULL;
-        z = (z ^ (z >> 27)) * 0x94D049BB133111EBULL;
-        z ^= z >> 31;
-        return (float)((int64_t)(z >> 40) - 8388608) / 8388608.0f;
-    }
-};
 
 static id<MTLDevice> dev; static id<MTLCommandQueue> q; static id<MTLComputePipelineState> pso;
 
@@ -158,6 +145,7 @@ int main() {
         for (auto& v : w) v = g.next() * 0.05f * sc;
         for (auto& v : b) v = g.next() * (pass ? 0x1p-100f : 1.0f);
         for (size_t i = 0; i < x.size(); ++i) { x[i] = g.next() * sc; if (outl && i % k == 5) x[i] *= 100.f; }
+        if (cases == 0) printf("input checksum (sum of first 64 w, first case): %a\n", input_checksum(w.data()));
         for (int bias = 0; bias < 2; ++bias) {
             const float* bp = bias ? b.data() : nullptr;
             run_metal(w.data(), x.data(), bp, y1.data(), k, n, rows);
